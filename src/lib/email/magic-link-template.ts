@@ -97,10 +97,10 @@ export function buildMagicLinkEmail({
 <tr><td style="padding:24px 32px">
 <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#0F172A">Une question ou besoin d'un avis de valeur complet${NBSP}?</p>
 <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569">Appelez-moi directement au <a href="tel:+33613180168" style="color:#0077B6;text-decoration:none;font-weight:600">06${NBSP}13${NBSP}18${NBSP}01${NBSP}68</a>.</p>
-<p style="margin:0;font-size:13px;line-height:1.5;color:#64748B"><strong style="color:#0F172A">Alex Lopez</strong><br>Conseiller iad${NBSP}+ RSAC<br><a href="https://alexlopez-provence.fr" style="color:#0077B6;text-decoration:none">alexlopez-provence.fr</a></p>
+<p style="margin:0;font-size:13px;line-height:1.5;color:#64748B"><strong style="color:#0F172A">Alex Lopez</strong><br>Conseiller iad${NBSP}+ RSAC<br><a href="https://alexandrelopez.fr" style="color:#0077B6;text-decoration:none">alexandrelopez.fr</a></p>
 </td></tr>
 </table>
-<p style="font-size:11px;color:#94A3B8;margin:16px 0 0;max-width:560px;line-height:1.5">Vous recevez cet email car vous avez fait une demande sur alexlopez-provence.fr. Ce lien est personnel et valable 30${NBSP}jours.</p>
+<p style="font-size:11px;color:#94A3B8;margin:16px 0 0;max-width:560px;line-height:1.5">Vous recevez cet email car vous avez fait une demande sur alexandrelopez.fr. Ce lien est personnel et valable 30${NBSP}jours.</p>
 </td></tr>
 </table>
 </body>
@@ -118,10 +118,10 @@ export function buildMagicLinkEmail({
 		'',
 		'Alex Lopez',
 		'Conseiller iad + RSAC',
-		'https://alexlopez-provence.fr',
+		'https://alexandrelopez.fr',
 		'',
 		'---',
-		'Vous recevez cet email car vous avez fait une demande sur alexlopez-provence.fr.',
+		'Vous recevez cet email car vous avez fait une demande sur alexandrelopez.fr.',
 		'Ce lien est personnel et valable 30 jours.',
 	]
 

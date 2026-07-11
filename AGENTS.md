@@ -12,8 +12,9 @@ Avant de modifier l'interface, lire :
 
 Branche de travail :
 
-- travailler localement sur `main` par defaut ;
-- pousser uniquement vers `origin/main` quand Alexandre le demande explicitement ;
+- travailler localement sur `preview` par defaut ;
+- ne rien pousser sans demande explicite d'Alexandre ;
+- quand Alexandre demande explicitement une livraison, integrer `preview` vers `main` puis pousser `origin/main` ;
 - ne pas creer de branches `design/*`, `ux/*`, `ui/*`, `a11y/*`, `feat/*` ou `fix/*` sauf decision explicite.
 
 Les changements doivent rester centres sur Mandat OS sauf demande explicite.

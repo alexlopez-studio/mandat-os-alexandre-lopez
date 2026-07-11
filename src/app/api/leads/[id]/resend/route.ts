@@ -11,7 +11,7 @@ type RouteContext = { params: Promise<{ id: string }> }
 function resolveSiteUrl(): string {
     const env = process.env.NEXT_PUBLIC_SITE_URL
     if (env && env.length > 0) return env.replace(/\/+$/, '')
-    return 'https://alexlopez-provence.fr'
+    return 'https://app.alexandrelopez.fr'
 }
 
 export async function POST(
