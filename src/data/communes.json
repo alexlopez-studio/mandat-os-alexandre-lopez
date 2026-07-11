@@ -1,0 +1,167 @@
+[
+  {
+    "slug": "varages",
+    "name": "Varages",
+    "postalCode": "83670",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.637,
+    "lng": 6.007,
+    "description": "Village provençal du Haut-Var, réputé pour ses faïences et son cadre naturel exceptionnel.",
+    "neighbors": ["barjols", "fox-amphoux", "tavernes", "montmeyan"]
+  },
+  {
+    "slug": "barjols",
+    "name": "Barjols",
+    "postalCode": "83670",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.556,
+    "lng": 6.012,
+    "description": "Surnommée la \"Tivoli provençale\", Barjols est célèbre pour ses fontaines et son patrimoine.",
+    "neighbors": ["varages", "tavernes", "ginasservis", "saint-julien-le-montagnier"]
+  },
+  {
+    "slug": "montmeyan",
+    "name": "Montmeyan",
+    "postalCode": "83670",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.680,
+    "lng": 6.065,
+    "description": "Village perché du Var avec vue panoramique sur le lac de Sainte-Croix.",
+    "neighbors": ["varages", "quinson", "fox-amphoux", "aups"]
+  },
+  {
+    "slug": "quinson",
+    "name": "Quinson",
+    "postalCode": "04500",
+    "department": "Alpes-de-Haute-Provence",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.697,
+    "lng": 6.038,
+    "description": "Village provençal au bord des Gorges du Verdon, site du Musée de Préhistoire.",
+    "neighbors": ["montmeyan", "saint-martin-de-bromes", "esparron-de-verdon"]
+  },
+  {
+    "slug": "fox-amphoux",
+    "name": "Fox-Amphoux",
+    "postalCode": "83670",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.659,
+    "lng": 6.041,
+    "description": "Petit village médiéval du Var, emblème de la Provence authentique.",
+    "neighbors": ["varages", "montmeyan", "aups", "barjols"]
+  },
+  {
+    "slug": "tavernes",
+    "name": "Tavernes",
+    "postalCode": "83670",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.581,
+    "lng": 5.994,
+    "description": "Village provençal entre Barjols et Rians, cadre paisible et naturel.",
+    "neighbors": ["barjols", "varages", "rians", "ginasservis"]
+  },
+  {
+    "slug": "ginasservis",
+    "name": "Ginasservis",
+    "postalCode": "83560",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.579,
+    "lng": 5.882,
+    "description": "Village du Haut-Var à la frontière avec les Alpes-de-Haute-Provence.",
+    "neighbors": ["rians", "barjols", "vinon-sur-verdon", "saint-julien-le-montagnier"]
+  },
+  {
+    "slug": "rians",
+    "name": "Rians",
+    "postalCode": "83560",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.609,
+    "lng": 5.814,
+    "description": "Bourg dynamique du Var, carrefour entre Aix-en-Provence et la Provence verte.",
+    "neighbors": ["ginasservis", "vinon-sur-verdon", "saint-julien-le-montagnier", "la-verdiere"]
+  },
+  {
+    "slug": "saint-julien-le-montagnier",
+    "name": "Saint-Julien-le-Montagnier",
+    "postalCode": "83560",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.645,
+    "lng": 5.896,
+    "description": "Village varois au cœur de la Provence verte, entre Verdon et Sainte-Baume.",
+    "neighbors": ["barjols", "rians", "ginasservis", "la-verdiere"]
+  },
+  {
+    "slug": "la-verdiere",
+    "name": "La Verdière",
+    "postalCode": "83560",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.639,
+    "lng": 5.933,
+    "description": "Village provençal dominé par son château, aux portes du Verdon.",
+    "neighbors": ["saint-julien-le-montagnier", "rians", "barjols", "ginasservis"]
+  },
+  {
+    "slug": "vinon-sur-verdon",
+    "name": "Vinon-sur-Verdon",
+    "postalCode": "83560",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.731,
+    "lng": 5.803,
+    "description": "Commune au bord du Verdon, à proximité de Manosque et d'Aix-en-Provence.",
+    "neighbors": ["ginasservis", "rians", "esparron-de-verdon", "saint-martin-de-bromes"]
+  },
+  {
+    "slug": "esparron-de-verdon",
+    "name": "Esparron-de-Verdon",
+    "postalCode": "04800",
+    "department": "Alpes-de-Haute-Provence",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.731,
+    "lng": 5.983,
+    "description": "Village au bord du lac d'Esparron, aux portes des Gorges du Verdon.",
+    "neighbors": ["quinson", "saint-martin-de-bromes", "vinon-sur-verdon"]
+  },
+  {
+    "slug": "saint-martin-de-bromes",
+    "name": "Saint-Martin-de-Brômes",
+    "postalCode": "04800",
+    "department": "Alpes-de-Haute-Provence",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.758,
+    "lng": 5.934,
+    "description": "Village médiéval des Alpes-de-Haute-Provence, entre Verdon et Luberon.",
+    "neighbors": ["esparron-de-verdon", "quinson", "vinon-sur-verdon"]
+  },
+  {
+    "slug": "aups",
+    "name": "Aups",
+    "postalCode": "83630",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.629,
+    "lng": 6.226,
+    "description": "Capitale du Haut-Var, réputée pour ses truffes et ses marchés provençaux.",
+    "neighbors": ["fox-amphoux", "montmeyan", "salernes", "tourtour"]
+  },
+  {
+    "slug": "salernes",
+    "name": "Salernes",
+    "postalCode": "83690",
+    "department": "Var",
+    "region": "Provence-Alpes-Côte d'Azur",
+    "lat": 43.557,
+    "lng": 6.237,
+    "description": "Réputée pour ses carrelages en terre cuite, Salernes est un village artisanal du Var.",
+    "neighbors": ["aups", "tourtour", "villecroze", "draguignan"]
+  }
+]

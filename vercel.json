@@ -1,0 +1,7 @@
+{
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "crons": [
+    { "path": "/api/jobs/sync-zones", "schedule": "0 3 * * *" }
+  ]
+}
