@@ -8,13 +8,29 @@ const PUBLIC_ADMIN_PATHS = [
   '/admin/reset-password',
 ]
 
+const PROTECTED_API_PREFIXES = [
+  '/api/admin',
+  '/api/ai',
+  '/api/leads',
+  '/api/market',
+  '/api/radar',
+]
+
+const PUBLIC_API_PATHS = [
+  '/api/market/webhooks/stream-estate',
+]
+
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname
 
   // Rafraîchit la session sur toutes les routes internes.
   const { response, user } = await updateSession(req)
 
-  const isProtected = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/app')
+  const isProtectedPage = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/app')
+  const isProtectedApi =
+    PROTECTED_API_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + '/')) &&
+    !PUBLIC_API_PATHS.some((publicPath) => path === publicPath || path.startsWith(publicPath + '/'))
+  const isProtected = isProtectedPage || isProtectedApi
   if (!isProtected) return response
 
   // Pages publiques d'auth : on laisse passer (mais on garde les cookies rafraîchis)
@@ -25,6 +41,13 @@ export async function middleware(req: NextRequest) {
   // Toute autre route interne exige une session.
   // Fail-closed : pas de session => redirection vers le login.
   if (!user) {
+    if (isProtectedApi) {
+      return NextResponse.json(
+        { success: false, error: 'Non authentifié' },
+        { status: 401 },
+      )
+    }
+
     const loginUrl = new URL('/admin/login', req.url)
     loginUrl.searchParams.set('redirect', path.startsWith('/dashboard') ? '/app/dashboard' : path)
     return NextResponse.redirect(loginUrl)
@@ -33,8 +56,15 @@ export async function middleware(req: NextRequest) {
   return response
 }
 
-// Middleware désactivé temporairement — matcher vide = aucune route interceptée
-// Pour réactiver : remettre ['/admin/:path*', '/dashboard/:path*', '/app/:path*']
 export const config = {
-  matcher: [],
+  matcher: [
+    '/admin/:path*',
+    '/dashboard/:path*',
+    '/app/:path*',
+    '/api/admin/:path*',
+    '/api/ai/:path*',
+    '/api/leads/:path*',
+    '/api/market/:path*',
+    '/api/radar/:path*',
+  ],
 }
