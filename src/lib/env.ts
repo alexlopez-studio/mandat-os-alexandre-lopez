@@ -12,7 +12,7 @@ export const env = {
     apiKey: process.env.STREAMESTATE_API_KEY ?? '',
   },
   app: {
-    siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://alexlopez-provence.fr',
+    siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://app.alexandrelopez.fr',
     calcomUrl: process.env.NEXT_PUBLIC_CALCOM_URL ?? 'https://cal.com/alex-lopez/consultation-gratuite',
     iadListingsUrl: process.env.NEXT_PUBLIC_IAD_LISTINGS_URL ?? '',
     iadEstimationUrl: 'https://www.iadfrance.fr/conseiller-immobilier/alexandre.lopez/estimation',

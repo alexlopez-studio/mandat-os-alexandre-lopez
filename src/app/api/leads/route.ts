@@ -48,7 +48,7 @@ function resolveSiteUrl(req: NextRequest): string {
   try {
     return new URL(req.url).origin
   } catch {
-    return 'https://alexlopez-provence.fr'
+    return 'https://app.alexandrelopez.fr'
   }
 }
 

@@ -1,4 +1,69 @@
-# Suivi Projet - Mandat OS MVP
+# Suivi Projet - Mandat OS
+
+## État actuel - 12/07/2026
+
+Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à Mandat OS.
+
+- Repo : `alexlopez-studio/mandat-os-alexandre-lopez`
+- Branche de travail locale : `preview`
+- Branche de livraison : `main`
+- Domaine production : `https://app.alexandrelopez.fr`
+- Projet Vercel : `mandat-os-alexandre-lopez`
+- Rôle produit : cockpit interne, affaires, opportunités, radar, clients, IA, jobs et automatisations métier.
+- Site public séparé : `site-alex-lopez-provence` sur `https://alexandrelopez.fr`
+- Portail client séparé : `espace-client-alexandre-lopez` sur `https://espace.alexandrelopez.fr`
+
+### Avancement
+
+- Extraction depuis l’état local du site source effectuée.
+- Nouveau repo GitHub créé et poussé.
+- Projet Vercel créé, configuré en Next.js et déployé.
+- Domaine `app.alexandrelopez.fr` configuré, SSL actif et routage vérifié.
+- Auth admin réactivée :
+  - `/admin/*`, `/app/*`, `/dashboard/*` exigent une session.
+  - API internes sensibles protégées par middleware avec `401` sans session.
+- Protection SSO Vercel réactivée sur les URLs techniques `*.vercel.app`.
+
+### Vérifications du 12/07/2026
+
+- `npm run lint` OK.
+- `npm run build` OK.
+- Production Vercel `READY`.
+- `https://app.alexandrelopez.fr/admin/login` répond `200`.
+- `https://app.alexandrelopez.fr/app/dashboard` redirige vers le login sans session.
+- `https://app.alexandrelopez.fr/api/market/dashboard` répond `401` sans session.
+
+### Points de vigilance
+
+- Les variables production ont été copiées depuis le projet Vercel source sans affichage dans les logs.
+- Les warnings historiques d’imports inutilisés restent à nettoyer.
+- `npm audit` signale encore des vulnérabilités dans l’arbre npm ; ne pas lancer `npm audit fix --force` sans passe dédiée.
+- Le portail client public ne doit pas dépendre des routes Mandat OS.
+
+### Prochaines étapes
+
+1. Faire une passe de nettoyage pour retirer les routes publiques marketing encore présentes mais inutiles côté Mandat OS.
+2. Tester une connexion admin réelle Supabase sur `app.alexandrelopez.fr`.
+3. Vérifier la présence et l’exécution du cron Vercel `/api/jobs/sync-zones`.
+4. Stabiliser les variables Preview/Development si besoin.
+5. Continuer les développements Mandat OS uniquement dans ce repo.
+
+### 12/07/2026 - Cohérence URLs et indexation
+
+- Domaine canonique confirmé : `https://app.alexandrelopez.fr`.
+- Correction du fallback `env.app.siteUrl` vers `https://app.alexandrelopez.fr`.
+- Ajout de `src/app/robots.ts` avec `Disallow: /` : Mandat OS ne doit pas être indexé.
+- Pas de sitemap SEO exposé pour Mandat OS, afin de ne pas publier de routes internes.
+- Les liens web visibles dans les templates email hérités pointent désormais vers `https://alexandrelopez.fr`.
+- Vérification : `npm run lint` OK.
+
+### Règle de suivi
+
+- Ajouter une entrée datée à ce fichier après chaque décision structurante, livraison ou audit.
+- Travailler localement sur `preview`.
+- Ne rien pousser sans demande explicite d’Alexandre.
+- Quand Alexandre demande explicitement une livraison, intégrer `preview` vers `main` puis pousser `origin/main`.
+- Conserver les notes historiques ci-dessous comme mémoire des travaux dont Mandat OS est issu.
 
 ## Regle actuelle - 17/06/2026
 
