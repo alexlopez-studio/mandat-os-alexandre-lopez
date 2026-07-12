@@ -15,7 +15,7 @@ export type ClientPortalPayload = {
   profile: Pick<ClientProfile, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'>
   dossier: Pick<
     ClientDossier,
-    'id' | 'status' | 'title' | 'client_type' | 'property_snapshot' | 'professional_opinion' | 'advisor_note' | 'created_at' | 'updated_at'
+    'id' | 'public_token' | 'status' | 'title' | 'client_type' | 'property_snapshot' | 'professional_opinion' | 'advisor_note' | 'created_at' | 'updated_at'
   >
   documents: Array<Pick<ClientDocument, 'id' | 'label' | 'category' | 'status' | 'file_name' | 'file_size' | 'mime_type' | 'uploaded_at' | 'validated_at'> & {
     signed_url: string | null
@@ -60,7 +60,11 @@ export async function loadClientPortalPayloadForBearerToken(
     .order('updated_at', { ascending: false })
     .limit(1)
 
-  if (requestedDossierId) query = query.eq('id', requestedDossierId)
+  if (requestedDossierId) {
+    query = isUuid(requestedDossierId)
+      ? query.eq('id', requestedDossierId)
+      : query.eq('public_token', requestedDossierId)
+  }
 
   const { data: dossier, error } = await query.maybeSingle()
   if (error || !dossier?.id) return null
@@ -103,6 +107,7 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
     },
     dossier: {
       id: detail.dossier.id,
+      public_token: detail.dossier.public_token,
       status: detail.dossier.status,
       title: detail.dossier.title,
       client_type: detail.dossier.client_type,
@@ -138,6 +143,10 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
         updated_at: event.updated_at,
       })),
   }
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
 function sanitizeJson(value: Json): Json {

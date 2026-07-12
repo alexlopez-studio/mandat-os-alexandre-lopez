@@ -48,6 +48,19 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 4. Stabiliser les variables Preview/Development si besoin.
 5. Continuer les développements Mandat OS uniquement dans ce repo.
 
+### 12/07/2026 - Réorganisation opportunité et suivi client
+
+- Fiche opportunité simplifiée : onglets `Vue d’ensemble`, `Estimation`, `Suivi client`, `Historique`.
+- Suppression du bloc `Préparation mandat & portail` dans la vue d’ensemble.
+- Fusion de `Bien & technique` dans `Estimation`, sans retrait de champ.
+- Renommage des surfaces d’administration client en `Suivi client`.
+- Ajout d’un lien client stable et sécurisé via `client_dossiers.public_token`.
+- Création du suivi client désormais vide : plus de documents ni jalons générés automatiquement.
+- Ajout de l’onglet interne `Diffusion & statistiques` dans le workspace `Suivi client`.
+- Migration Supabase `028_client_dossiers_public_token.sql` appliquée sur la base distante et marquée appliquée dans l’historique.
+- Contrôle base : 7 dossiers existants, 7 tokens présents, 7 tokens uniques.
+- Vérification technique : `npx tsc --noEmit` OK.
+
 ### 12/07/2026 - Cohérence URLs et indexation
 
 - Domaine canonique confirmé : `https://app.alexandrelopez.fr`.

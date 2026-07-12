@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Copy,
   Edit,
   Eye,
   ExternalLink,
@@ -57,7 +58,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { DossierWorkspace } from '../../clients/DossierWorkspace'
-import { AudienceTrackingPanel } from './AudienceTrackingPanel'
 import { isPortalEligibleStage } from '@/lib/market/seller-stages'
 import type { OpportunityEventType } from '@/types/supabase'
 
@@ -114,6 +114,7 @@ interface Opportunity {
 
 interface ClientDossierLink {
   id: string
+  public_token: string
   status: string
   documents_total: number
   documents_validated: number
@@ -282,13 +283,6 @@ interface ProfessionalDraft {
   client_reviews_json: string
   iad_advantages: string
   iad_services: string
-}
-
-interface MandateReadinessItem {
-  id: string
-  label: string
-  detail: string
-  done: boolean
 }
 
 const STAGES = [
@@ -779,6 +773,7 @@ export default function OpportunityDetailPage() {
   const [invitingClient, setInvitingClient] = useState(false)
   const [clientAccessSent, setClientAccessSent] = useState(false)
   const [openingClientLink, setOpeningClientLink] = useState(false)
+  const [copyingClientLink, setCopyingClientLink] = useState(false)
   const [propertyDraft, setPropertyDraft] = useState<PropertyDraft>(EMPTY_PROPERTY_DRAFT)
   const [professionalDraft, setProfessionalDraft] = useState<ProfessionalDraft>(EMPTY_PROFESSIONAL_DRAFT)
   const [savingPreparation, setSavingPreparation] = useState(false)
@@ -833,7 +828,7 @@ export default function OpportunityDetailPage() {
       })
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.error ?? 'Création impossible')
-      toast.success('Dossier créé')
+      toast.success('Suivi client créé')
       await load()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Création impossible')
@@ -864,6 +859,23 @@ export default function OpportunityDetailPage() {
     }
   }
 
+  async function copyClientPortalUrlFromOpportunity() {
+    const dossierId = opportunity?.client_dossier?.id
+    if (!dossierId) return
+    setCopyingClientLink(true)
+    try {
+      const res = await fetch(`/api/market/clients/${dossierId}/client-link`)
+      const json = await res.json()
+      if (!res.ok || !json.success || !json.data?.client_url) throw new Error(json.error ?? 'Lien client impossible')
+      await navigator.clipboard?.writeText(json.data.client_url)
+      toast.success('Lien client copié')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Lien client impossible')
+    } finally {
+      setCopyingClientLink(false)
+    }
+  }
+
   async function openClientPortalLinkFromOpportunity() {
     const dossierId = opportunity?.client_dossier?.id
     if (!dossierId) return
@@ -873,9 +885,8 @@ export default function OpportunityDetailPage() {
       const json = await res.json()
       if (!res.ok || !json.success || !json.data?.preview_url) throw new Error(json.error ?? 'Ouverture impossible')
       const href = json.data.preview_url
-      await navigator.clipboard?.writeText(href)
       window.open(href, '_blank', 'noopener,noreferrer')
-      toast.success('Aperçu client ouvert et lien copié')
+      toast.success('Aperçu client ouvert')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Ouverture impossible')
     } finally {
@@ -1209,9 +1220,6 @@ export default function OpportunityDetailPage() {
   const estimate = opportunity.estimated_price_min || opportunity.estimated_price_max
     ? [opportunity.estimated_price_min, opportunity.estimated_price_max].filter((value): value is number => value != null).map(formatPrice).join(' - ')
     : null
-  const mandateReadiness = buildMandateReadiness(opportunity, currentStage, upcomingEvents)
-  const mandateReadinessDone = mandateReadiness.filter((item) => item.done).length
-
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 border-b pb-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1263,9 +1271,8 @@ export default function OpportunityDetailPage() {
           className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-1"
         >
           <TabsTrigger value="overview" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Vue d’ensemble</TabsTrigger>
-          <TabsTrigger value="preparation" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Bien & technique</TabsTrigger>
           <TabsTrigger value="estimation" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Estimation</TabsTrigger>
-          <TabsTrigger value="dossier" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Portail client</TabsTrigger>
+          <TabsTrigger value="dossier" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Suivi client</TabsTrigger>
           <TabsTrigger value="history" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Historique</TabsTrigger>
         </TabsList>
 
@@ -1304,17 +1311,6 @@ export default function OpportunityDetailPage() {
                 </div>
               </section>
 
-              <MandateReadinessPanel
-                items={mandateReadiness}
-                completed={mandateReadinessDone}
-                total={mandateReadiness.length}
-                currentStage={currentStage}
-                eligible={isPortalEligibleStage(currentStage)}
-                hasPortal={Boolean(opportunity.client_dossier)}
-                creatingDossier={creatingDossier}
-                onCreateDossier={createDossier}
-              />
-
               <section className="rounded-xl border bg-card p-5">
                 <h2 className="text-base font-semibold">Activités à venir</h2>
                 <div className="mt-4 space-y-3">
@@ -1349,13 +1345,17 @@ export default function OpportunityDetailPage() {
 
             <aside className="space-y-5">
               <InfoCard
-                title="Portail client"
+                title="Suivi client"
                 icon={<FolderOpen className="size-4" />}
                 action={opportunity.client_dossier ? (
                   <div className="flex flex-wrap justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={openClientPortalLinkFromOpportunity} disabled={openingClientLink}>
                       {openingClientLink ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <ExternalLink className="mr-1 size-3.5" />}
                       Prévisualiser
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={copyClientPortalUrlFromOpportunity} disabled={copyingClientLink}>
+                      {copyingClientLink ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Copy className="mr-1 size-3.5" />}
+                      Copier le lien
                     </Button>
                     <Button variant="outline" size="sm" onClick={inviteClientFromOpportunity} disabled={invitingClient}>
                       {invitingClient ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Mail className="mr-1 size-3.5" />}
@@ -1365,7 +1365,7 @@ export default function OpportunityDetailPage() {
                 ) : isPortalEligibleStage(currentStage) ? (
                   <Button variant="outline" size="sm" onClick={createDossier} disabled={creatingDossier}>
                     {creatingDossier ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Plus className="mr-1 size-3.5" />}
-                    Ouvrir
+                    Créer
                   </Button>
                 ) : null}
               >
@@ -1377,7 +1377,7 @@ export default function OpportunityDetailPage() {
                     <Badge variant="outline" className={clientAccessSent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>
                       {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
                     </Badge>
-                    <p className="text-xs text-muted-foreground">Accès client manuel : utilisez « Donner accès » lorsque le rapport est remis.</p>
+                    <p className="text-xs text-muted-foreground">Lien permanent sécurisé : copiez-le pour le client, puis utilisez « Donner accès » au moment de la remise.</p>
                     <div className="flex items-center gap-2 rounded-lg border p-3 text-sm">
                       <FileText className="size-4 text-primary" />
                       <span>{opportunity.client_dossier.documents_validated}/{opportunity.client_dossier.documents_total} documents validés</span>
@@ -1389,11 +1389,15 @@ export default function OpportunityDetailPage() {
                       {openingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Eye className="mr-1 size-4" />}
                       Prévisualiser l’espace client
                     </Button>
+                    <Button variant="outline" size="sm" className="w-full" onClick={copyClientPortalUrlFromOpportunity} disabled={copyingClientLink}>
+                      {copyingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Copy className="mr-1 size-4" />}
+                      Copier le lien client
+                    </Button>
                   </div>
                 ) : isPortalEligibleStage(currentStage) ? (
-                  <EmptyCardText>Portail non ouvert. Ouvre-le depuis l’onglet « Portail client » pour présenter l’estimation au client.</EmptyCardText>
+                  <EmptyCardText>Suivi client non créé. Crée-le pour obtenir le lien client et préparer le suivi de vente.</EmptyCardText>
                 ) : (
-                  <EmptyCardText>Le portail client s’ouvrira à partir de la visite d’estimation.</EmptyCardText>
+                  <EmptyCardText>Le suivi client sera disponible à partir de la remise de l’estimation.</EmptyCardText>
                 )}
               </InfoCard>
 
@@ -1481,12 +1485,12 @@ export default function OpportunityDetailPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="preparation">
+        <TabsContent value="estimation">
           <section className="rounded-xl border bg-card p-5">
             <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-base font-semibold">Préparation bien & technique</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Données de travail pré-mandat, conservées sur l’opportunité.</p>
+                <h2 className="text-base font-semibold">Estimation</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Bien, données techniques et avis de valeur, conservés sur l’opportunité.</p>
               </div>
               <Button onClick={savePreparation} disabled={savingPreparation} className="bg-primary hover:bg-primary/90">
                 {savingPreparation ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
@@ -1513,19 +1517,13 @@ export default function OpportunityDetailPage() {
               <DraftArea label="Points de vigilance" value={propertyDraft.points_vigilance} onChange={(value) => setPropertyDraft((draft) => ({ ...draft, points_vigilance: value }))} />
             </div>
           </section>
-        </TabsContent>
 
-        <TabsContent value="estimation">
-          <section className="rounded-xl border bg-card p-5">
-            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <section className="mt-5 rounded-xl border bg-card p-5">
+            <div className="mb-5">
               <div>
                 <h2 className="text-base font-semibold">Estimation & avis de valeur</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Prépare l’avis de valeur avant signature, sans créer de client.</p>
               </div>
-              <Button onClick={savePreparation} disabled={savingPreparation} className="bg-primary hover:bg-primary/90">
-                {savingPreparation ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
-                Sauvegarder
-              </Button>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
@@ -1545,24 +1543,23 @@ export default function OpportunityDetailPage() {
 
         <TabsContent value="dossier">
           <div className="space-y-5">
-            <AudienceTrackingPanel opportunityId={opportunity.id} />
             {opportunity.client_dossier ? (
-              <DossierWorkspace dossierId={opportunity.client_dossier.id} />
+              <DossierWorkspace dossierId={opportunity.client_dossier.id} opportunityId={opportunity.id} />
             ) : (
               <section className="rounded-xl border bg-card p-8 text-center">
               <FolderOpen className="mx-auto size-8 text-muted-foreground" />
               <h2 className="mt-3 text-base font-semibold">
-                {isPortalEligibleStage(currentStage) ? 'Ouvrir le portail client' : 'Portail client à venir'}
+                {isPortalEligibleStage(currentStage) ? 'Créer le suivi client' : 'Suivi client à venir'}
               </h2>
               <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
                 {isPortalEligibleStage(currentStage)
-                  ? 'Ouvre le portail pour présenter le rapport d’estimation au client, puis suivre documents, plan de vente, visites et offres.'
-                  : 'Le portail s’ouvrira à partir de la visite d’estimation, pour présenter le rapport directement au client.'}
+                  ? 'Crée le suivi pour obtenir le lien client, puis administrer documents, plan de vente, visites, offres et statistiques.'
+                  : 'Le suivi client sera disponible à partir de la remise de l’estimation.'}
               </p>
               {isPortalEligibleStage(currentStage) && (
                 <Button size="sm" className="mt-4 bg-primary hover:bg-primary/90" onClick={createDossier} disabled={creatingDossier}>
                   {creatingDossier ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Plus className="mr-1 size-3.5" />}
-                  Ouvrir le portail client
+                  Créer le suivi client
                 </Button>
               )}
               </section>
@@ -1882,148 +1879,6 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] font-semibold uppercase text-muted-foreground">{label}</p>
       <p className="mt-1 truncate font-medium">{value}</p>
     </div>
-  )
-}
-
-function buildMandateReadiness(
-  opportunity: Opportunity,
-  currentStage: string,
-  upcomingEvents: OpportunityEvent[],
-): MandateReadinessItem[] {
-  const property = propertyDraftFromOpportunity(opportunity)
-  const opinion = professionalDraftFromOpportunity(opportunity)
-  const hasContact = Boolean(
-    opportunity.lead ||
-    opportunity.seller_name ||
-    opportunity.seller_email ||
-    opportunity.seller_phone,
-  )
-  const hasCoreProperty = Boolean(
-    property.type_bien ||
-    property.adresse ||
-    property.commune ||
-    property.surface,
-  )
-  const hasValuation = Boolean(
-    opinion.price ||
-    opinion.price_low ||
-    opinion.price_high ||
-    opinion.summary,
-  )
-  const hasNextAction = Boolean(opportunity.next_action || opportunity.due_date || upcomingEvents.length > 0)
-  const hasPortal = Boolean(opportunity.client_dossier)
-  const documentsReady = Boolean(
-    opportunity.client_dossier &&
-    opportunity.client_dossier.documents_total > 0 &&
-    opportunity.client_dossier.documents_missing === 0,
-  )
-
-  return [
-    {
-      id: 'stage',
-      label: 'Stade portail atteint',
-      detail: isPortalEligibleStage(currentStage) ? currentStage : "Attendre la visite d'estimation",
-      done: isPortalEligibleStage(currentStage),
-    },
-    {
-      id: 'contact',
-      label: 'Contact vendeur rattaché',
-      detail: hasContact ? leadName(opportunity.lead) : 'Ajouter ou créer le vendeur',
-      done: hasContact,
-    },
-    {
-      id: 'property',
-      label: 'Bien cadré',
-      detail: hasCoreProperty ? [property.type_bien, property.commune].filter(Boolean).join(' · ') || 'Informations bien présentes' : 'Compléter bien & technique',
-      done: hasCoreProperty,
-    },
-    {
-      id: 'valuation',
-      label: 'Avis de valeur prêt',
-      detail: hasValuation ? opinion.price ? formatPrice(nullableNumber(opinion.price)) : 'Estimation renseignée' : 'Compléter l’estimation',
-      done: hasValuation,
-    },
-    {
-      id: 'portal',
-      label: 'Portail client ouvert',
-      detail: hasPortal ? 'Dossier client actif ou brouillon' : 'Ouvrir le portail depuis cette affaire',
-      done: hasPortal,
-    },
-    {
-      id: 'documents',
-      label: 'Pièces vendeur suivies',
-      detail: opportunity.client_dossier
-        ? `${opportunity.client_dossier.documents_validated}/${opportunity.client_dossier.documents_total} validées`
-        : 'Disponible après ouverture portail',
-      done: documentsReady,
-    },
-    {
-      id: 'next_action',
-      label: 'Prochaine action posée',
-      detail: opportunity.next_action || upcomingEvents[0]?.title || 'Créer une tâche, un appel ou un RDV',
-      done: hasNextAction,
-    },
-  ]
-}
-
-function MandateReadinessPanel({
-  items,
-  completed,
-  total,
-  currentStage,
-  eligible,
-  hasPortal,
-  creatingDossier,
-  onCreateDossier,
-}: {
-  items: MandateReadinessItem[]
-  completed: number
-  total: number
-  currentStage: string
-  eligible: boolean
-  hasPortal: boolean
-  creatingDossier: boolean
-  onCreateDossier: () => void
-}) {
-  const progress = total > 0 ? Math.round((completed / total) * 100) : 0
-
-  return (
-    <section className="rounded-xl border bg-card p-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h2 className="text-base font-semibold">Préparation mandat & portail</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Affaire au stade {currentStage}. {completed}/{total} points prêts avant présentation client.
-          </p>
-        </div>
-        {!hasPortal && eligible && (
-          <Button size="sm" onClick={onCreateDossier} disabled={creatingDossier} className="bg-primary hover:bg-primary/90">
-            {creatingDossier ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Plus className="mr-1 size-4" />}
-            Ouvrir le portail
-          </Button>
-        )}
-      </div>
-
-      <div className="mt-4 h-2 w-full rounded-full bg-muted">
-        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.max(8, progress)}%` }} />
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {items.map((item) => (
-          <div key={item.id} className={cn('rounded-lg border p-3', item.done ? 'bg-emerald-50/70 border-emerald-200' : 'bg-muted/20')}>
-            <div className="flex items-start gap-2">
-              <span className={cn('mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border', item.done ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-border bg-background text-muted-foreground')}>
-                {item.done ? <CheckCircle2 className="size-3.5" /> : <Clock className="size-3.5" />}
-              </span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold">{item.label}</p>
-                <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{item.detail}</p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
   )
 }
 

@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import {
+  BarChart3,
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  Copy,
   Download,
   Eye,
   FileText,
@@ -22,10 +24,11 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { AudienceTrackingPanel } from '../opportunities/[id]/AudienceTrackingPanel'
 import type { Json } from '@/types/supabase'
 
 /**
- * Espace de suivi post-mandat d'un dossier client (Documents / Plan de vente /
+ * Espace de suivi client post-estimation/post-mandat (Documents / Plan de vente /
  * Visites / Offres), autonome : il charge ses propres données via l'API dossier
  * et peut être monté partout où l'on dispose d'un `dossierId` (fiche client,
  * fiche opportunité/mandat...).
@@ -100,7 +103,7 @@ const ADMIN_PRIMARY_ACTION_CLASS = 'h-10 rounded-xl px-4'
 const ADMIN_SECONDARY_ACTION_CLASS = 'h-9 rounded-xl px-3'
 const ADMIN_ICON_ACTION_CLASS = 'size-9 rounded-xl'
 
-export function DossierWorkspace({ dossierId }: { dossierId: string }) {
+export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: string; opportunityId?: string }) {
   const [documents, setDocuments] = useState<ClientDocument[]>([])
   const [events, setEvents] = useState<ClientEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -110,6 +113,7 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
   const [inviting, setInviting] = useState(false)
   const [clientAccessSent, setClientAccessSent] = useState(false)
   const [openingClientLink, setOpeningClientLink] = useState(false)
+  const [copyingClientLink, setCopyingClientLink] = useState(false)
   const [tab, setTab] = useState('documents')
 
   const fetchDetail = useCallback(async () => {
@@ -246,9 +250,8 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
       const json = await res.json()
       if (!res.ok || !json.success || !json.data?.preview_url) throw new Error(json.error ?? 'Ouverture impossible')
       const href = json.data.preview_url
-      await navigator.clipboard?.writeText(href)
       window.open(href, '_blank', 'noopener,noreferrer')
-      toast.success('Aperçu client ouvert et lien copié')
+      toast.success('Aperçu client ouvert')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Ouverture impossible')
     } finally {
@@ -256,7 +259,22 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
     }
   }
 
-  if (loading) return <p className="p-4 text-sm text-muted-foreground">Chargement du suivi mandat...</p>
+  async function copyClientPortalUrl() {
+    setCopyingClientLink(true)
+    try {
+      const res = await fetch(`/api/market/clients/${dossierId}/client-link`)
+      const json = await res.json()
+      if (!res.ok || !json.success || !json.data?.client_url) throw new Error(json.error ?? 'Lien client impossible')
+      await navigator.clipboard?.writeText(json.data.client_url)
+      toast.success('Lien client copié')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Lien client impossible')
+    } finally {
+      setCopyingClientLink(false)
+    }
+  }
+
+  if (loading) return <p className="p-4 text-sm text-muted-foreground">Chargement du suivi client...</p>
 
   const planEvents = events.filter((event) => !['visit', 'offer'].includes(event.type))
   const visitEvents = events.filter((event) => event.type === 'visit')
@@ -269,7 +287,7 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
     <Tabs value={tab} onValueChange={setTab} className="space-y-6">
       <section className="flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Portail client</h2>
+          <h2 className="text-base font-semibold text-foreground">Suivi client</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">Estimation, documents, plan de vente, visites et offres — administrés ici, visualisés côté client.</p>
           <Badge variant="outline" className={clientAccessSent ? 'mt-2 border-emerald-200 bg-emerald-50 text-emerald-700' : 'mt-2 border-amber-200 bg-amber-50 text-amber-700'}>
             {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
@@ -279,6 +297,10 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
           <Button variant="outline" size="sm" onClick={inviteClient} disabled={inviting}>
             {inviting ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Send className="mr-1 size-4" />}
             Donner accès au client
+          </Button>
+          <Button variant="outline" size="sm" onClick={copyClientPortalUrl} disabled={copyingClientLink}>
+            {copyingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Copy className="mr-1 size-4" />}
+            Copier le lien client
           </Button>
           <Button variant="outline" size="sm" onClick={openClientPortalLink} disabled={openingClientLink}>
             {openingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Eye className="mr-1 size-4" />}
@@ -299,6 +321,7 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
         <WorkspaceTab value="plan" icon={BookOpen} label="Plan de vente" />
         <WorkspaceTab value="visites" icon={CalendarDays} label="Visites" />
         <WorkspaceTab value="offres" icon={CheckCircle2} label="Offres" />
+        {opportunityId && <WorkspaceTab value="diffusion" icon={BarChart3} label="Diffusion & statistiques" />}
       </TabsList>
 
       <TabsContent value="documents" className="space-y-6">
@@ -344,6 +367,11 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
         <EventEditor title="Ajouter une offre d'achat" type="offer" onAdd={addEvent} newEvent={newEvent} setNewEvent={setNewEvent} />
         <EventList title="Offres transmises" events={offerEvents} onUpdate={updateEvent} onDelete={deleteEvent} />
       </TabsContent>
+      {opportunityId && (
+        <TabsContent value="diffusion" className="space-y-6">
+          <AudienceTrackingPanel opportunityId={opportunityId} />
+        </TabsContent>
+      )}
     </Tabs>
   )
 }

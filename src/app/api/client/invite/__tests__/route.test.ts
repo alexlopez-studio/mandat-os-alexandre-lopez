@@ -86,6 +86,7 @@ beforeEach(() => {
       opportunity_id: 'opp-1',
       client_type: 'seller',
       buyer_lead_id: null,
+      public_token: 'seller-token',
       status: 'active',
       title: 'Projet vendeur',
       property_snapshot: {},

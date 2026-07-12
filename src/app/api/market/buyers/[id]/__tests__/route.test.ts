@@ -92,6 +92,7 @@ beforeEach(() => {
       opportunity_id: null,
       client_type: 'buyer',
       buyer_lead_id: 'buyer-1',
+      public_token: 'buyer-token',
       status: 'active',
       title: 'Recherche acquéreur',
       property_snapshot: {},

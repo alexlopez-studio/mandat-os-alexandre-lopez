@@ -3,7 +3,7 @@ import { ensureClientDossierForLead } from '@/lib/client-portal'
 import { getCurrentAdmin } from '@/lib/auth'
 import { sendClientPortalInviteEmail } from '@/lib/resend'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
-import { buildClientPortalAuthRedirect } from '@/lib/client-portal-url'
+import { buildClientPortalAuthRedirect, buildClientPortalDossierUrl } from '@/lib/client-portal-url'
 import { isPortalEligibleStage } from '@/lib/market/seller-stages'
 
 export async function POST(req: NextRequest) {
@@ -56,7 +56,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { profile, dossier } = await ensureClientDossierForLead(leadId)
-    const redirectTo = buildClientPortalAuthRedirect(dossier.id)
+    const redirectTo = buildClientPortalAuthRedirect(dossier.public_token)
+    const clientUrl = buildClientPortalDossierUrl(dossier.public_token)
 
     const generated = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',
@@ -76,6 +77,8 @@ export async function POST(req: NextRequest) {
         success: true,
         data: {
           dossier_id: dossier.id,
+          public_token: dossier.public_token,
+          client_url: clientUrl,
           email: profile.email,
           delivery: sent ? 'resend' : 'manual',
           action_link: sent ? null : actionLink,
@@ -103,6 +106,8 @@ export async function POST(req: NextRequest) {
       success: true,
       data: {
         dossier_id: dossier.id,
+        public_token: dossier.public_token,
+        client_url: clientUrl,
         email: profile.email,
         delivery: 'supabase',
       },

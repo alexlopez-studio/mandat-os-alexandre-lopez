@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     return json(req, { success: true, data: payload })
   } catch (err) {
     console.error('[GET /api/client-portal/dossier]', err)
-    return json(req, { success: false, error: 'Erreur lecture portail client' }, 500)
+    return json(req, { success: false, error: 'Erreur lecture suivi client' }, 500)
   }
 }
 
@@ -43,6 +43,7 @@ function corsHeaders(req: NextRequest) {
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
+    'http://localhost:3003',
   ])
 
   return {

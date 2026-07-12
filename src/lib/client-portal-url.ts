@@ -14,6 +14,10 @@ export function buildClientPortalAuthRedirect(dossierId?: string | null) {
   return url.toString()
 }
 
+export function buildClientPortalDossierUrl(publicToken: string) {
+  return new URL(`/dossier/${encodeURIComponent(publicToken)}`, getClientPortalUrl()).toString()
+}
+
 export function buildClientPortalPreviewUrl(token: string) {
   const url = new URL('/preview', getClientPortalUrl())
   url.searchParams.set('token', token)
