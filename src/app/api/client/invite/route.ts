@@ -3,6 +3,7 @@ import { ensureClientDossierForLead } from '@/lib/client-portal'
 import { getCurrentAdmin } from '@/lib/auth'
 import { sendClientPortalInviteEmail } from '@/lib/resend'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { buildClientPortalAuthRedirect } from '@/lib/client-portal-url'
 
 const SIGNED_MANDATE_STAGE = 'Mandat signé'
 
@@ -56,8 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { profile, dossier } = await ensureClientDossierForLead(leadId)
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? req.nextUrl?.origin ?? new URL(req.url).origin
-    const redirectTo = `${siteUrl}/auth/callback?next=/espace-client`
+    const redirectTo = buildClientPortalAuthRedirect(dossier.id)
 
     const generated = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',

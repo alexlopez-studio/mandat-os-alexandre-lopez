@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { loadAdminClientDossier, rejectIfNoAdmin } from '@/lib/market/client-admin'
 import { sendClientPortalInviteEmail } from '@/lib/resend'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { buildClientPortalAuthRedirect } from '@/lib/client-portal-url'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -17,8 +18,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!detail) return NextResponse.json({ success: false, error: 'Dossier introuvable' }, { status: 404 })
 
     const profile = detail.dossier.client_profile
-    const siteUrl = returnLinkOnly ? req.nextUrl.origin : process.env.NEXT_PUBLIC_SITE_URL ?? req.nextUrl.origin
-    const redirectTo = `${siteUrl}/auth/callback?next=/espace-client`
+    const redirectTo = buildClientPortalAuthRedirect(id)
 
     const generated = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',

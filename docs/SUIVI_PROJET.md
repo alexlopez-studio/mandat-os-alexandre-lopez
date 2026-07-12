@@ -57,6 +57,15 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 - Les liens web visibles dans les templates email hérités pointent désormais vers `https://alexandrelopez.fr`.
 - Vérification : `npm run lint` OK.
 
+### 12/07/2026 - Passerelle vers le portail client autonome
+
+- Ajout d’un helper `client-portal-url` pour centraliser l’URL cible du portail client.
+- Les liens magiques client générés par Mandat OS redirigent désormais vers `https://espace.alexandrelopez.fr/auth/callback`.
+- Le dossier client est transmis en paramètre `dossier` lorsque la route dispose de l’identifiant.
+- Ajout de `CLIENT_PORTAL_URL` dans `.env.example`.
+- Variable Vercel `CLIENT_PORTAL_URL` ajoutée en Production et Development ; Preview utilisera le fallback codé tant que la branche `preview` Mandat OS n’existe pas côté remote.
+- Vérification : `npm run lint` OK et `npm run build` OK, avec warnings historiques d’imports inutilisés.
+
 ### Règle de suivi
 
 - Ajouter une entrée datée à ce fichier après chaque décision structurante, livraison ou audit.
