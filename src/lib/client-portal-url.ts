@@ -13,3 +13,9 @@ export function buildClientPortalAuthRedirect(dossierId?: string | null) {
   if (dossierId) url.searchParams.set('dossier', dossierId)
   return url.toString()
 }
+
+export function buildClientPortalPreviewUrl(token: string) {
+  const url = new URL('/preview', getClientPortalUrl())
+  url.searchParams.set('token', token)
+  return url.toString()
+}

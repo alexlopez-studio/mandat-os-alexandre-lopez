@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
 import {
   BookOpen,
   CalendarDays,
@@ -109,6 +108,7 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
   const [newEvent, setNewEvent] = useState(emptyEventDraft())
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [inviting, setInviting] = useState(false)
+  const [clientAccessSent, setClientAccessSent] = useState(false)
   const [openingClientLink, setOpeningClientLink] = useState(false)
   const [tab, setTab] = useState('documents')
 
@@ -231,6 +231,7 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
       } else {
         toast.success('Invitation envoyée')
       }
+      setClientAccessSent(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Invitation impossible')
     } finally {
@@ -241,10 +242,13 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
   async function openClientPortalLink() {
     setOpeningClientLink(true)
     try {
-      const href = `${window.location.origin}/espace-client/preview/${dossierId}?presentation=1`
+      const res = await fetch(`/api/market/clients/${dossierId}/preview-link`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || !json.success || !json.data?.preview_url) throw new Error(json.error ?? 'Ouverture impossible')
+      const href = json.data.preview_url
       await navigator.clipboard?.writeText(href)
       window.open(href, '_blank', 'noopener,noreferrer')
-      toast.success('Interface client ouverte et lien copié')
+      toast.success('Aperçu client ouvert et lien copié')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Ouverture impossible')
     } finally {
@@ -266,19 +270,19 @@ export function DossierWorkspace({ dossierId }: { dossierId: string }) {
       <section className="flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-base font-semibold text-foreground">Portail client</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">Estimation, documents, plan de vente, visites et offres — partagés avec le client.</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">Estimation, documents, plan de vente, visites et offres — administrés ici, visualisés côté client.</p>
+          <Badge variant="outline" className={clientAccessSent ? 'mt-2 border-emerald-200 bg-emerald-50 text-emerald-700' : 'mt-2 border-amber-200 bg-amber-50 text-amber-700'}>
+            {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
+          </Badge>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={inviteClient} disabled={inviting}>
             {inviting ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Send className="mr-1 size-4" />}
-            Inviter le client
-          </Button>
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/app/clients/${dossierId}/preview`}><Eye className="mr-1 size-4" /> Aperçu client</Link>
+            Donner accès au client
           </Button>
           <Button variant="outline" size="sm" onClick={openClientPortalLink} disabled={openingClientLink}>
             {openingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Eye className="mr-1 size-4" />}
-            Accès direct client
+            Prévisualiser l’espace client
           </Button>
         </div>
       </section>

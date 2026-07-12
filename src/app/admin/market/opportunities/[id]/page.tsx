@@ -777,6 +777,7 @@ export default function OpportunityDetailPage() {
   const [savingStage, setSavingStage] = useState(false)
   const [creatingDossier, setCreatingDossier] = useState(false)
   const [invitingClient, setInvitingClient] = useState(false)
+  const [clientAccessSent, setClientAccessSent] = useState(false)
   const [openingClientLink, setOpeningClientLink] = useState(false)
   const [propertyDraft, setPropertyDraft] = useState<PropertyDraft>(EMPTY_PROPERTY_DRAFT)
   const [professionalDraft, setProfessionalDraft] = useState<ProfessionalDraft>(EMPTY_PROFESSIONAL_DRAFT)
@@ -855,6 +856,7 @@ export default function OpportunityDetailPage() {
       } else {
         toast.success('Invitation envoyée')
       }
+      setClientAccessSent(true)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Invitation impossible')
     } finally {
@@ -867,10 +869,13 @@ export default function OpportunityDetailPage() {
     if (!dossierId) return
     setOpeningClientLink(true)
     try {
-      const href = `${window.location.origin}/espace-client/preview/${dossierId}?presentation=1`
+      const res = await fetch(`/api/market/clients/${dossierId}/preview-link`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || !json.success || !json.data?.preview_url) throw new Error(json.error ?? 'Ouverture impossible')
+      const href = json.data.preview_url
       await navigator.clipboard?.writeText(href)
       window.open(href, '_blank', 'noopener,noreferrer')
-      toast.success('Interface client ouverte et lien copié')
+      toast.success('Aperçu client ouvert et lien copié')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Ouverture impossible')
     } finally {
@@ -1348,12 +1353,13 @@ export default function OpportunityDetailPage() {
                 icon={<FolderOpen className="size-4" />}
                 action={opportunity.client_dossier ? (
                   <div className="flex flex-wrap justify-end gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/app/clients/${opportunity.client_dossier.id}/preview`}><ExternalLink className="mr-1 size-3.5" /> Aperçu</Link>
+                    <Button variant="outline" size="sm" onClick={openClientPortalLinkFromOpportunity} disabled={openingClientLink}>
+                      {openingClientLink ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <ExternalLink className="mr-1 size-3.5" />}
+                      Prévisualiser
                     </Button>
                     <Button variant="outline" size="sm" onClick={inviteClientFromOpportunity} disabled={invitingClient}>
                       {invitingClient ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Mail className="mr-1 size-3.5" />}
-                      Inviter
+                      Donner accès
                     </Button>
                   </div>
                 ) : isPortalEligibleStage(currentStage) ? (
@@ -1368,6 +1374,10 @@ export default function OpportunityDetailPage() {
                     <Badge variant="outline" className="text-[11px]">
                       {CLIENT_DOSSIER_STATUS_LABELS[opportunity.client_dossier.status] ?? opportunity.client_dossier.status}
                     </Badge>
+                    <Badge variant="outline" className={clientAccessSent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>
+                      {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
+                    </Badge>
+                    <p className="text-xs text-muted-foreground">Accès client manuel : utilisez « Donner accès » lorsque le rapport est remis.</p>
                     <div className="flex items-center gap-2 rounded-lg border p-3 text-sm">
                       <FileText className="size-4 text-primary" />
                       <span>{opportunity.client_dossier.documents_validated}/{opportunity.client_dossier.documents_total} documents validés</span>
@@ -1377,7 +1387,7 @@ export default function OpportunityDetailPage() {
                     )}
                     <Button variant="outline" size="sm" className="w-full" onClick={openClientPortalLinkFromOpportunity} disabled={openingClientLink}>
                       {openingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Eye className="mr-1 size-4" />}
-                      Accès présentation client
+                      Prévisualiser l’espace client
                     </Button>
                   </div>
                 ) : isPortalEligibleStage(currentStage) ? (

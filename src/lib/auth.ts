@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { isDevAuthBypassEnabled } from '@/lib/dev-auth-bypass'
 import type { AdminRole } from '@/types/supabase'
 
 export type AdminProfile = {
@@ -11,6 +12,19 @@ export type AdminProfile = {
   is_active: boolean
 }
 
+function getDevAdminProfile(): AdminProfile | null {
+  if (!isDevAuthBypassEnabled()) return null
+
+  return {
+    id: 'dev-admin',
+    user_id: 'dev-admin',
+    email: process.env.MANDAT_OS_DEV_ADMIN_EMAIL ?? 'dev@mandat-os.local',
+    role: 'super_admin',
+    full_name: 'Admin local',
+    is_active: true,
+  }
+}
+
 /**
  * Renvoie le profil admin de l'utilisateur connecté, ou null si :
  *  - pas de session Supabase,
@@ -20,6 +34,9 @@ export type AdminProfile = {
  * Lie automatiquement user_id à la fiche admin_users lors de la 1re connexion.
  */
 export async function getCurrentAdmin(): Promise<AdminProfile | null> {
+  const devAdmin = getDevAdminProfile()
+  if (devAdmin) return devAdmin
+
   const supabase = await createClient()
   const {
     data: { user },

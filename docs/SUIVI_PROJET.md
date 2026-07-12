@@ -66,6 +66,15 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 - Variable Vercel `CLIENT_PORTAL_URL` ajoutée en Production et Development ; Preview utilisera le fallback codé tant que la branche `preview` Mandat OS n’existe pas côté remote.
 - Vérification : `npm run lint` OK et `npm run build` OK, avec warnings historiques d’imports inutilisés.
 
+### 12/07/2026 - Mandat OS pilote le portail client lecture seule
+
+- Ajout d’une API publique contrôlée `/api/client-portal/dossier` retournant une projection client publiable et `readOnly`.
+- Ajout d’un token d’aperçu signé temporaire et d’un endpoint admin `/api/market/clients/[id]/preview-link`.
+- Les boutons Mandat OS ouvrent désormais `https://espace.alexandrelopez.fr/preview?token=...` pour prévisualiser le même portail que le client.
+- Les actions d’invitation sont renommées “Donner accès au client”.
+- Le portail devient éligible à partir de “Remise de l’estimation”, puis reste disponible après “Mandat signé”.
+- Ajout de `CLIENT_PORTAL_PREVIEW_SECRET` dans `.env.example` avec fallback serveur sur les secrets Supabase existants.
+
 ### Règle de suivi
 
 - Ajouter une entrée datée à ce fichier après chaque décision structurante, livraison ou audit.

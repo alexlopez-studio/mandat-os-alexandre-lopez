@@ -4,8 +4,7 @@ import { getCurrentAdmin } from '@/lib/auth'
 import { sendClientPortalInviteEmail } from '@/lib/resend'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { buildClientPortalAuthRedirect } from '@/lib/client-portal-url'
-
-const SIGNED_MANDATE_STAGE = 'Mandat signé'
+import { isPortalEligibleStage } from '@/lib/market/seller-stages'
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,11 +44,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!opportunity || opportunity.stage !== SIGNED_MANDATE_STAGE) {
+    if (!opportunity || !isPortalEligibleStage(opportunity.stage)) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Le dossier client ne peut être créé qu’après mandat signé.',
+          error: 'Le dossier client peut être ouvert à partir de la remise de l’estimation.',
           opportunity,
         },
         { status: 409 },
