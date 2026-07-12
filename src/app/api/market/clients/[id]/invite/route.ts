@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { loadAdminClientDossier, rejectIfNoAdmin } from '@/lib/market/client-admin'
 import { sendClientPortalInviteEmail } from '@/lib/resend'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { buildClientPortalAuthRedirect, buildClientPortalDossierUrl } from '@/lib/client-portal-url'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
@@ -17,8 +18,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!detail) return NextResponse.json({ success: false, error: 'Dossier introuvable' }, { status: 404 })
 
     const profile = detail.dossier.client_profile
-    const siteUrl = returnLinkOnly ? req.nextUrl.origin : process.env.NEXT_PUBLIC_SITE_URL ?? req.nextUrl.origin
-    const redirectTo = `${siteUrl}/auth/callback?next=/espace-client`
+    const redirectTo = buildClientPortalAuthRedirect(detail.dossier.public_token)
+    const clientUrl = buildClientPortalDossierUrl(detail.dossier.public_token)
 
     const generated = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',
@@ -33,6 +34,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         data: {
           delivery: 'manual',
           action_link: actionLink,
+          client_url: clientUrl,
         },
       })
     }
@@ -51,6 +53,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           data: {
             delivery: 'manual',
             action_link: signupLink,
+            client_url: clientUrl,
           },
         })
       }
@@ -70,6 +73,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         data: {
           delivery: sent ? 'resend' : 'manual',
           action_link: sent ? null : actionLink,
+          client_url: clientUrl,
         },
       })
     }
@@ -87,7 +91,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: false, error: 'Envoi impossible' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, data: { delivery: 'supabase' } })
+    return NextResponse.json({ success: true, data: { delivery: 'supabase', client_url: clientUrl } })
   } catch (err) {
     console.error('[POST /api/market/clients/[id]/invite]', err)
     return NextResponse.json({ success: false, error: 'Erreur invitation client' }, { status: 500 })

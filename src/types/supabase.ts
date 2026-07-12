@@ -296,6 +296,7 @@ export type Database = {
           opportunity_id: string | null
           client_type: string
           buyer_lead_id: string | null
+          public_token: string
           status: string
           title: string
           property_snapshot: Json
@@ -313,6 +314,7 @@ export type Database = {
           opportunity_id?: string | null
           client_type?: string
           buyer_lead_id?: string | null
+          public_token?: string
           status?: string
           title?: string
           property_snapshot?: Json
@@ -330,6 +332,7 @@ export type Database = {
           opportunity_id?: string | null
           client_type?: string
           buyer_lead_id?: string | null
+          public_token?: string
           status?: string
           title?: string
           property_snapshot?: Json

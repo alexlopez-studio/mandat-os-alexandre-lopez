@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
+import { isDevAuthBypassEnabled } from '@/lib/dev-auth-bypass'
 
 // Chemins accessibles sans session (auth elle-même)
 const PUBLIC_ADMIN_PATHS = [
@@ -32,6 +33,12 @@ export async function middleware(req: NextRequest) {
     !PUBLIC_API_PATHS.some((publicPath) => path === publicPath || path.startsWith(publicPath + '/'))
   const isProtected = isProtectedPage || isProtectedApi
   if (!isProtected) return response
+
+  // En local uniquement, permet de travailler dans Mandat OS sans session Supabase.
+  // En production, isDevAuthBypassEnabled() est toujours false.
+  if (isDevAuthBypassEnabled()) {
+    return response
+  }
 
   // Pages publiques d'auth : on laisse passer (mais on garde les cookies rafraîchis)
   if (PUBLIC_ADMIN_PATHS.some((p) => path === p || path.startsWith(p + '/'))) {

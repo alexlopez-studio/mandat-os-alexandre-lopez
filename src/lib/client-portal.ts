@@ -35,56 +35,6 @@ type LeadWithProspect = Lead & {
   prospect?: Pick<Prospect, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'> | null
 }
 
-const DEFAULT_DOCUMENTS = [
-  { label: 'Titre de propriété', category: 'propriete' },
-  { label: 'Pièce d’identité', category: 'identite' },
-  { label: 'Diagnostics immobiliers', category: 'diagnostics' },
-  { label: 'Taxe foncière', category: 'fiscalite' },
-]
-
-const DEFAULT_BUYER_DOCUMENTS = [
-  { label: 'Pièce d’identité', category: 'identite' },
-  { label: 'Mandat de recherche signé', category: 'mandat_recherche' },
-  { label: 'Plan de financement', category: 'financement' },
-  { label: 'Attestation bancaire ou courtier', category: 'financement' },
-]
-
-const DEFAULT_EVENTS = [
-  {
-    title: 'Dossier vendeur ouvert',
-    description: 'Votre espace centralise les informations utiles pour préparer la vente.',
-    status: 'done',
-  },
-  {
-    title: 'Préparation des pièces',
-    description: 'Déposez les documents disponibles pour accélérer le montage du dossier.',
-    status: 'todo',
-  },
-  {
-    title: 'Avis de valeur conseiller',
-    description: 'La valeur retenue sera affinée après analyse terrain et concurrence active.',
-    status: 'todo',
-  },
-]
-
-const DEFAULT_BUYER_EVENTS = [
-  {
-    title: 'Dossier acquéreur ouvert',
-    description: 'Votre recherche est centralisée avec les critères, les biens proposés et les prochaines étapes.',
-    status: 'done',
-  },
-  {
-    title: 'Mandat de recherche signé',
-    description: 'Le mandat permet de piloter la recherche et les propositions de biens.',
-    status: 'done',
-  },
-  {
-    title: 'Sélection des biens compatibles',
-    description: 'Les biens compatibles seront proposés et suivis dans ce dossier.',
-    status: 'todo',
-  },
-]
-
 export async function ensureClientDossierForLead(leadId: string, opportunityId?: string) {
   const { data: lead, error: leadError } = await supabaseAdmin
     .from('leads')
@@ -187,8 +137,6 @@ export async function ensureClientDossierForLead(leadId: string, opportunityId?:
   if (!dossierResult.data) throw new Error('Dossier client non retourné')
 
   const dossier = dossierResult.data as ClientDossier
-  await ensureDefaultDocuments(dossier.id)
-  await ensureDefaultEvents(dossier.id)
 
   return { profile: profile as ClientProfile, dossier }
 }
@@ -259,8 +207,6 @@ export async function ensureClientDossierForBuyer(buyerLeadId: string) {
   if (!dossierResult.data) throw new Error('Dossier client acquéreur non retourné')
 
   const dossier = dossierResult.data as ClientDossier
-  await ensureDefaultDocuments(dossier.id, 'buyer')
-  await ensureDefaultEvents(dossier.id, 'buyer')
 
   return { profile: profile as ClientProfile, dossier }
 }
@@ -446,51 +392,6 @@ async function loadEvents(supabase: SupabaseClient<Database>, dossierId: string)
 
   if (error) throw new Error(`Lecture jalons client impossible: ${error.message}`)
   return (data ?? []) as ClientDossierEvent[]
-}
-
-async function ensureDefaultDocuments(dossierId: string, clientType: 'seller' | 'buyer' = 'seller') {
-  const { count, error } = await supabaseAdmin
-    .from('client_documents')
-    .select('id', { count: 'exact', head: true })
-    .eq('dossier_id', dossierId)
-
-  if (error) throw new Error(`Lecture checklist impossible: ${error.message}`)
-  if ((count ?? 0) > 0) return
-
-  const { error: insertError } = await supabaseAdmin
-    .from('client_documents')
-    .insert((clientType === 'buyer' ? DEFAULT_BUYER_DOCUMENTS : DEFAULT_DOCUMENTS).map((document) => ({
-      dossier_id: dossierId,
-      label: document.label,
-      category: document.category,
-      status: 'requested',
-    })) as never)
-
-  if (insertError) throw new Error(`Création checklist impossible: ${insertError.message}`)
-}
-
-async function ensureDefaultEvents(dossierId: string, clientType: 'seller' | 'buyer' = 'seller') {
-  const { count, error } = await supabaseAdmin
-    .from('client_dossier_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('dossier_id', dossierId)
-
-  if (error) throw new Error(`Lecture jalons impossible: ${error.message}`)
-  if ((count ?? 0) > 0) return
-
-  const { error: insertError } = await supabaseAdmin
-    .from('client_dossier_events')
-    .insert((clientType === 'buyer' ? DEFAULT_BUYER_EVENTS : DEFAULT_EVENTS).map((event) => ({
-      dossier_id: dossierId,
-      type: 'milestone',
-      title: event.title,
-      description: event.description,
-      status: event.status,
-      visible_to_client: true,
-      created_by: 'system',
-    })) as never)
-
-  if (insertError) throw new Error(`Création jalons impossible: ${insertError.message}`)
 }
 
 function buildDossierTitle(

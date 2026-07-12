@@ -48,6 +48,19 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 4. Stabiliser les variables Preview/Development si besoin.
 5. Continuer les développements Mandat OS uniquement dans ce repo.
 
+### 12/07/2026 - Réorganisation opportunité et suivi client
+
+- Fiche opportunité simplifiée : onglets `Vue d’ensemble`, `Estimation`, `Suivi client`, `Historique`.
+- Suppression du bloc `Préparation mandat & portail` dans la vue d’ensemble.
+- Fusion de `Bien & technique` dans `Estimation`, sans retrait de champ.
+- Renommage des surfaces d’administration client en `Suivi client`.
+- Ajout d’un lien client stable et sécurisé via `client_dossiers.public_token`.
+- Création du suivi client désormais vide : plus de documents ni jalons générés automatiquement.
+- Ajout de l’onglet interne `Diffusion & statistiques` dans le workspace `Suivi client`.
+- Migration Supabase `028_client_dossiers_public_token.sql` appliquée sur la base distante et marquée appliquée dans l’historique.
+- Contrôle base : 7 dossiers existants, 7 tokens présents, 7 tokens uniques.
+- Vérification technique : `npx tsc --noEmit` OK.
+
 ### 12/07/2026 - Cohérence URLs et indexation
 
 - Domaine canonique confirmé : `https://app.alexandrelopez.fr`.
@@ -56,6 +69,24 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 - Pas de sitemap SEO exposé pour Mandat OS, afin de ne pas publier de routes internes.
 - Les liens web visibles dans les templates email hérités pointent désormais vers `https://alexandrelopez.fr`.
 - Vérification : `npm run lint` OK.
+
+### 12/07/2026 - Passerelle vers le portail client autonome
+
+- Ajout d’un helper `client-portal-url` pour centraliser l’URL cible du portail client.
+- Les liens magiques client générés par Mandat OS redirigent désormais vers `https://espace.alexandrelopez.fr/auth/callback`.
+- Le dossier client est transmis en paramètre `dossier` lorsque la route dispose de l’identifiant.
+- Ajout de `CLIENT_PORTAL_URL` dans `.env.example`.
+- Variable Vercel `CLIENT_PORTAL_URL` ajoutée en Production et Development ; Preview utilisera le fallback codé tant que la branche `preview` Mandat OS n’existe pas côté remote.
+- Vérification : `npm run lint` OK et `npm run build` OK, avec warnings historiques d’imports inutilisés.
+
+### 12/07/2026 - Mandat OS pilote le portail client lecture seule
+
+- Ajout d’une API publique contrôlée `/api/client-portal/dossier` retournant une projection client publiable et `readOnly`.
+- Ajout d’un token d’aperçu signé temporaire et d’un endpoint admin `/api/market/clients/[id]/preview-link`.
+- Les boutons Mandat OS ouvrent désormais `https://espace.alexandrelopez.fr/preview?token=...` pour prévisualiser le même portail que le client.
+- Les actions d’invitation sont renommées “Donner accès au client”.
+- Le portail devient éligible à partir de “Remise de l’estimation”, puis reste disponible après “Mandat signé”.
+- Ajout de `CLIENT_PORTAL_PREVIEW_SECRET` dans `.env.example` avec fallback serveur sur les secrets Supabase existants.
 
 ### Règle de suivi
 

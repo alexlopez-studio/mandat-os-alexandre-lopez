@@ -72,6 +72,7 @@ function dossier(id: string) {
       opportunity_id: null,
       client_type: 'seller',
       buyer_lead_id: null,
+      public_token: `${id}-token`,
       status: 'active',
       title: 'Client',
       property_snapshot: {},
@@ -93,7 +94,7 @@ beforeEach(() => {
 })
 
 describe('POST /api/market/clients', () => {
-  it('refuses seller portal opening before the estimation visit', async () => {
+  it('refuses seller client follow-up creation before estimation delivery', async () => {
     mocks.opportunity = { data: { id: 'opp-1', lead_id: 'lead-1', stage: 'Pré-estimation' }, error: null }
 
     const res = await POST(makeRequest({ client_type: 'seller', opportunity_id: 'opp-1' }))
@@ -104,8 +105,8 @@ describe('POST /api/market/clients', () => {
     expect(mockedEnsureClientDossierForLead).not.toHaveBeenCalled()
   })
 
-  it('opens the seller portal from the estimation visit stage', async () => {
-    mocks.opportunity = { data: { id: 'opp-1', lead_id: 'lead-1', stage: "Visite d'estimation" }, error: null }
+  it('creates seller client follow-up from the estimation delivery stage', async () => {
+    mocks.opportunity = { data: { id: 'opp-1', lead_id: 'lead-1', stage: "Remise de l'estimation" }, error: null }
 
     const res = await POST(makeRequest({ client_type: 'seller', opportunity_id: 'opp-1' }))
     const json = await res.json()

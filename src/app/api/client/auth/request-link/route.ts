@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { buildClientPortalAuthRedirect } from '@/lib/client-portal-url'
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,8 +35,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? req.nextUrl.origin
-    const emailRedirectTo = `${siteUrl}/auth/callback?next=/espace-client`
+    const emailRedirectTo = buildClientPortalAuthRedirect()
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {

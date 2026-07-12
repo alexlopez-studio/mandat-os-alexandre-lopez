@@ -168,11 +168,11 @@ async function loadClientDossierLink(
 ) {
   // Le dossier client peut être rattaché par opportunity_id (création directe)
   // ou, à défaut, par lead_id (rattachement au contact vendeur).
-  let dossier: { id: string; status: string } | null = null
+  let dossier: { id: string; public_token: string; status: string } | null = null
 
   const byOpportunity = await supabaseAdmin
     .from('client_dossiers')
-    .select('id, status')
+    .select('id, public_token, status')
     .eq('opportunity_id', opportunity.id)
     .order('updated_at', { ascending: false })
     .limit(1)
@@ -183,7 +183,7 @@ async function loadClientDossierLink(
   if (!dossier && opportunity.lead_id) {
     const byLead = await supabaseAdmin
       .from('client_dossiers')
-      .select('id, status')
+      .select('id, public_token, status')
       .eq('lead_id', opportunity.lead_id)
       .order('updated_at', { ascending: false })
       .limit(1)
@@ -203,6 +203,7 @@ async function loadClientDossierLink(
   const rows = (docs ?? []) as { status: string }[]
   return {
     id: dossier.id,
+    public_token: dossier.public_token,
     status: dossier.status,
     documents_total: rows.length,
     documents_validated: rows.filter((doc) => doc.status === 'validated').length,

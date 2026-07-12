@@ -3,8 +3,8 @@ import { ensureClientDossierForLead } from '@/lib/client-portal'
 import { getCurrentAdmin } from '@/lib/auth'
 import { sendClientPortalInviteEmail } from '@/lib/resend'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
-
-const SIGNED_MANDATE_STAGE = 'Mandat signé'
+import { buildClientPortalAuthRedirect, buildClientPortalDossierUrl } from '@/lib/client-portal-url'
+import { isPortalEligibleStage } from '@/lib/market/seller-stages'
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,11 +44,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!opportunity || opportunity.stage !== SIGNED_MANDATE_STAGE) {
+    if (!opportunity || !isPortalEligibleStage(opportunity.stage)) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Le dossier client ne peut être créé qu’après mandat signé.',
+          error: 'Le dossier client peut être ouvert à partir de la remise de l’estimation.',
           opportunity,
         },
         { status: 409 },
@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { profile, dossier } = await ensureClientDossierForLead(leadId)
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? req.nextUrl?.origin ?? new URL(req.url).origin
-    const redirectTo = `${siteUrl}/auth/callback?next=/espace-client`
+    const redirectTo = buildClientPortalAuthRedirect(dossier.public_token)
+    const clientUrl = buildClientPortalDossierUrl(dossier.public_token)
 
     const generated = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',
@@ -77,6 +77,8 @@ export async function POST(req: NextRequest) {
         success: true,
         data: {
           dossier_id: dossier.id,
+          public_token: dossier.public_token,
+          client_url: clientUrl,
           email: profile.email,
           delivery: sent ? 'resend' : 'manual',
           action_link: sent ? null : actionLink,
@@ -104,6 +106,8 @@ export async function POST(req: NextRequest) {
       success: true,
       data: {
         dossier_id: dossier.id,
+        public_token: dossier.public_token,
+        client_url: clientUrl,
         email: profile.email,
         delivery: 'supabase',
       },

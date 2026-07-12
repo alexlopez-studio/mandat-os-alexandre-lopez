@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'Opportunité introuvable' }, { status: 404 })
       }
       if (!isPortalEligibleStage(opportunity.stage)) {
-        return NextResponse.json({ success: false, error: 'Le portail client s’ouvre à partir de la visite d’estimation' }, { status: 409 })
+        return NextResponse.json({ success: false, error: 'Le suivi client se crée à partir de la remise de l’estimation' }, { status: 409 })
       }
       if (!opportunity.lead_id) {
         return NextResponse.json({ success: false, error: 'Cette opportunité n’a pas de contact vendeur rattaché' }, { status: 409 })
