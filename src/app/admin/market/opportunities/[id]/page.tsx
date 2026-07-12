@@ -24,6 +24,7 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
+  Rocket,
   Search,
   StickyNote,
   Trash2,
@@ -456,6 +457,10 @@ function formatDateTime(value: string | null | undefined) {
   })
 }
 
+function isClientPortalEstimationPublished(opportunity: Opportunity | null) {
+  return asRecord(opportunity?.professional_opinion).client_portal_published === true
+}
+
 function eventDate(event: OpportunityEvent) {
   return event.due_at ?? event.occurred_at ?? event.created_at
 }
@@ -774,6 +779,7 @@ export default function OpportunityDetailPage() {
   const [clientAccessSent, setClientAccessSent] = useState(false)
   const [openingClientLink, setOpeningClientLink] = useState(false)
   const [copyingClientLink, setCopyingClientLink] = useState(false)
+  const [publishingEstimation, setPublishingEstimation] = useState(false)
   const [propertyDraft, setPropertyDraft] = useState<PropertyDraft>(EMPTY_PROPERTY_DRAFT)
   const [professionalDraft, setProfessionalDraft] = useState<ProfessionalDraft>(EMPTY_PROFESSIONAL_DRAFT)
   const [savingPreparation, setSavingPreparation] = useState(false)
@@ -894,6 +900,23 @@ export default function OpportunityDetailPage() {
     }
   }
 
+  async function publishEstimationFromOpportunity() {
+    const dossierId = opportunity?.client_dossier?.id
+    if (!dossierId) return
+    setPublishingEstimation(true)
+    try {
+      const res = await fetch(`/api/market/clients/${dossierId}/publish-estimation`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error ?? 'Publication impossible')
+      toast.success('Estimation publiée dans l’espace client')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Publication impossible')
+    } finally {
+      setPublishingEstimation(false)
+    }
+  }
+
   const loadLeads = useCallback(async () => {
     setLeadLoading(true)
     try {
@@ -988,6 +1011,14 @@ export default function OpportunityDetailPage() {
   }
 
   async function savePreparation() {
+    const existingOpinion = asRecord(opportunity?.professional_opinion)
+    const nextProfessionalOpinion = {
+      ...normalizeProfessionalDraft(professionalDraft),
+      ...(existingOpinion.client_portal_published === true ? {
+        client_portal_published: true,
+        client_portal_published_at: existingOpinion.client_portal_published_at,
+      } : {}),
+    }
     setSavingPreparation(true)
     try {
       const res = await fetch('/api/market/opportunities/' + id, {
@@ -995,7 +1026,7 @@ export default function OpportunityDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           property_snapshot: normalizePropertyDraft(propertyDraft),
-          professional_opinion: normalizeProfessionalDraft(professionalDraft),
+          professional_opinion: nextProfessionalOpinion,
         }),
       })
       const data = await res.json()
@@ -1217,6 +1248,7 @@ export default function OpportunityDetailPage() {
   const stageIndex = Math.max(0, STAGES.indexOf(currentStage))
   const progress = Math.max(8, ((stageIndex + 1) / STAGES.length) * 100)
   const editableProperty = isUserEditableProperty(opportunity.property)
+  const estimationPublished = isClientPortalEstimationPublished(opportunity)
   const estimate = opportunity.estimated_price_min || opportunity.estimated_price_max
     ? [opportunity.estimated_price_min, opportunity.estimated_price_max].filter((value): value is number => value != null).map(formatPrice).join(' - ')
     : null
@@ -1361,6 +1393,10 @@ export default function OpportunityDetailPage() {
                       {invitingClient ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Mail className="mr-1 size-3.5" />}
                       Donner accès
                     </Button>
+                    <Button variant="outline" size="sm" onClick={publishEstimationFromOpportunity} disabled={publishingEstimation || estimationPublished}>
+                      {publishingEstimation ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Rocket className="mr-1 size-3.5" />}
+                      Publier
+                    </Button>
                   </div>
                 ) : isPortalEligibleStage(currentStage) ? (
                   <Button variant="outline" size="sm" onClick={createDossier} disabled={creatingDossier}>
@@ -1377,6 +1413,9 @@ export default function OpportunityDetailPage() {
                     <Badge variant="outline" className={clientAccessSent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>
                       {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
                     </Badge>
+                    <Badge variant="outline" className={estimationPublished ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}>
+                      {estimationPublished ? 'Estimation publiée' : 'Estimation non publiée'}
+                    </Badge>
                     <p className="text-xs text-muted-foreground">Lien permanent sécurisé : copiez-le pour le client, puis utilisez « Donner accès » au moment de la remise.</p>
                     <div className="flex items-center gap-2 rounded-lg border p-3 text-sm">
                       <FileText className="size-4 text-primary" />
@@ -1392,6 +1431,10 @@ export default function OpportunityDetailPage() {
                     <Button variant="outline" size="sm" className="w-full" onClick={copyClientPortalUrlFromOpportunity} disabled={copyingClientLink}>
                       {copyingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Copy className="mr-1 size-4" />}
                       Copier le lien client
+                    </Button>
+                    <Button variant="outline" size="sm" className="w-full" onClick={publishEstimationFromOpportunity} disabled={publishingEstimation || estimationPublished}>
+                      {publishingEstimation ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Rocket className="mr-1 size-4" />}
+                      Publier l’estimation dans l’espace client
                     </Button>
                   </div>
                 ) : isPortalEligibleStage(currentStage) ? (

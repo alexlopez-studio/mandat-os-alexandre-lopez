@@ -12,6 +12,10 @@ export type ClientPortalPayload = {
   readOnly: true
   source: 'mandat-os'
   generated_at: string
+  estimation: {
+    status: 'empty' | 'draft' | 'published'
+    published_at: string | null
+  }
   profile: Pick<ClientProfile, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'>
   dossier: Pick<
     ClientDossier,
@@ -94,10 +98,13 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
   if (!detail) throw new Error('Dossier introuvable')
 
   const profile = detail.dossier.client_profile
+  const professionalOpinion = asRecord(detail.dossier.professional_opinion)
+  const estimation = estimationState(professionalOpinion)
   return {
     readOnly: true,
     source: 'mandat-os',
     generated_at: new Date().toISOString(),
+    estimation,
     profile: {
       id: profile.id,
       email: profile.email,
@@ -112,7 +119,7 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
       title: detail.dossier.title,
       client_type: detail.dossier.client_type,
       property_snapshot: sanitizeJson(detail.dossier.property_snapshot),
-      professional_opinion: sanitizeJson(detail.dossier.professional_opinion),
+      professional_opinion: estimation.status === 'published' ? sanitizeJson(detail.dossier.professional_opinion) : {},
       advisor_note: detail.dossier.advisor_note,
       created_at: detail.dossier.created_at,
       updated_at: detail.dossier.updated_at,
@@ -151,4 +158,21 @@ function isUuid(value: string) {
 
 function sanitizeJson(value: Json): Json {
   return value ?? {}
+}
+
+function asRecord(value: Json): Record<string, Json | undefined> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, Json | undefined>
+  return {}
+}
+
+function estimationState(opinion: Record<string, Json | undefined>): ClientPortalPayload['estimation'] {
+  const published = opinion.client_portal_published === true
+  const publishedAt = typeof opinion.client_portal_published_at === 'string' ? opinion.client_portal_published_at : null
+  if (published) return { status: 'published', published_at: publishedAt }
+
+  const draftKeys = Object.keys(opinion).filter((key) => !key.startsWith('client_portal_'))
+  return {
+    status: draftKeys.length > 0 ? 'draft' : 'empty',
+    published_at: null,
+  }
 }

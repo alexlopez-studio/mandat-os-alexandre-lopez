@@ -13,6 +13,7 @@ import {
   FileUp,
   Loader2,
   Plus,
+  Rocket,
   Send,
   Trash2,
   Upload,
@@ -112,6 +113,8 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
   const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [inviting, setInviting] = useState(false)
   const [clientAccessSent, setClientAccessSent] = useState(false)
+  const [estimationPublished, setEstimationPublished] = useState(false)
+  const [publishingEstimation, setPublishingEstimation] = useState(false)
   const [openingClientLink, setOpeningClientLink] = useState(false)
   const [copyingClientLink, setCopyingClientLink] = useState(false)
   const [tab, setTab] = useState('documents')
@@ -125,6 +128,7 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
     }
     setDocuments(json.data.documents ?? [])
     setEvents(json.data.events ?? [])
+    setEstimationPublished(Boolean(json.data.dossier?.professional_opinion?.client_portal_published))
   }, [dossierId])
 
   useEffect(() => {
@@ -274,6 +278,22 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
     }
   }
 
+  async function publishEstimation() {
+    setPublishingEstimation(true)
+    try {
+      const res = await fetch(`/api/market/clients/${dossierId}/publish-estimation`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error ?? 'Publication impossible')
+      setEstimationPublished(true)
+      toast.success('Estimation publiée dans l’espace client')
+      await fetchDetail()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Publication impossible')
+    } finally {
+      setPublishingEstimation(false)
+    }
+  }
+
   if (loading) return <p className="p-4 text-sm text-muted-foreground">Chargement du suivi client...</p>
 
   const planEvents = events.filter((event) => !['visit', 'offer'].includes(event.type))
@@ -292,8 +312,15 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
           <Badge variant="outline" className={clientAccessSent ? 'mt-2 border-emerald-200 bg-emerald-50 text-emerald-700' : 'mt-2 border-amber-200 bg-amber-50 text-amber-700'}>
             {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
           </Badge>
+          <Badge variant="outline" className={estimationPublished ? 'mt-2 ml-2 border-emerald-200 bg-emerald-50 text-emerald-700' : 'mt-2 ml-2 border-slate-200 bg-slate-50 text-slate-600'}>
+            {estimationPublished ? 'Estimation publiée' : 'Estimation non publiée'}
+          </Badge>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={publishEstimation} disabled={publishingEstimation || estimationPublished}>
+            {publishingEstimation ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Rocket className="mr-1 size-4" />}
+            Publier l’estimation
+          </Button>
           <Button variant="outline" size="sm" onClick={inviteClient} disabled={inviting}>
             {inviting ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Send className="mr-1 size-4" />}
             Donner accès au client
