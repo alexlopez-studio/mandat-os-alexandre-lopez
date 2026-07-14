@@ -88,6 +88,16 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 - Le portail devient éligible à partir de “Remise de l’estimation”, puis reste disponible après “Mandat signé”.
 - Ajout de `CLIENT_PORTAL_PREVIEW_SECRET` dans `.env.example` avec fallback serveur sur les secrets Supabase existants.
 
+### 14/07/2026 - Projection client : contexte bien et statut suivi de vente
+
+- La projection `/api/client-portal/dossier` expose désormais `property_context.type` et `property_context.commune`.
+- Ajout de `sales_follow_up.status` pour piloter l’Espace Client :
+  - `active` si l’opportunité liée est en `Mandat signé` ou `Vendu` ;
+  - `teaser` dans tous les autres cas.
+- Aucune donnée admin supplémentaire ni secret n’est exposé au portail client.
+- Ajout de l’endpoint dev-only `/api/dev/client-portal-test-dossiers`.
+- Cet endpoint est indisponible en production et sert uniquement à ouvrir des aperçus locaux sans login client.
+
 ### Règle de suivi
 
 - Ajouter une entrée datée à ce fichier après chaque décision structurante, livraison ou audit.

@@ -16,6 +16,13 @@ export type ClientPortalPayload = {
     status: 'empty' | 'draft' | 'published'
     published_at: string | null
   }
+  property_context: {
+    type: string | null
+    commune: string | null
+  }
+  sales_follow_up: {
+    status: 'teaser' | 'active'
+  }
   profile: Pick<ClientProfile, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'>
   dossier: Pick<
     ClientDossier,
@@ -99,12 +106,32 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
 
   const profile = detail.dossier.client_profile
   const professionalOpinion = asRecord(detail.dossier.professional_opinion)
+  const propertySnapshot = asRecord(detail.dossier.property_snapshot)
   const estimation = estimationState(professionalOpinion)
   return {
     readOnly: true,
     source: 'mandat-os',
     generated_at: new Date().toISOString(),
     estimation,
+    property_context: {
+      type: textValue(
+        detail.seller_property?.type_bien,
+        detail.opportunity?.property_type,
+        propertySnapshot.type_bien,
+        propertySnapshot.property_type,
+        propertySnapshot.type,
+      ),
+      commune: textValue(
+        detail.lead?.commune,
+        detail.opportunity?.property_city,
+        propertySnapshot.commune,
+        propertySnapshot.city,
+        propertySnapshot.ville,
+      ),
+    },
+    sales_follow_up: {
+      status: isSalesFollowUpActive(detail.opportunity?.stage) ? 'active' : 'teaser',
+    },
     profile: {
       id: profile.id,
       email: profile.email,
@@ -150,6 +177,17 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
         updated_at: event.updated_at,
       })),
   }
+}
+
+function isSalesFollowUpActive(stage: string | null | undefined) {
+  return stage === 'Mandat signé' || stage === 'Vendu'
+}
+
+function textValue(...values: Array<Json | string | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
 }
 
 function isUuid(value: string) {

@@ -469,18 +469,6 @@ function isUserEditableProperty(property: PropertyInfo | null) {
   return property?.source === 'manual' || property?.source === 'user'
 }
 
-function milestoneRows(opportunity: Opportunity) {
-  return [
-    { label: 'Estimation réalisée', value: formatDate(opportunity.pre_estimation_done_at) },
-    {
-      label: 'Prochaine action',
-      value: opportunity.next_action
-        ? `${opportunity.next_action}${opportunity.due_date ? ` · ${formatDate(opportunity.due_date)}` : ''}`
-        : '—',
-    },
-  ]
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
@@ -1333,14 +1321,6 @@ export default function OpportunityDetailPage() {
                   Ouverte depuis le {formatDate(opportunity.created_at)}.
                 </p>
 
-                <div className="mt-5 grid gap-2 sm:grid-cols-4">
-                  {milestoneRows(opportunity).map((milestone) => (
-                    <div key={milestone.label} className="rounded-lg border bg-muted/20 p-3">
-                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">{milestone.label}</p>
-                      <p className="mt-1 line-clamp-2 text-sm font-medium">{milestone.value}</p>
-                    </div>
-                  ))}
-                </div>
               </section>
 
               <section className="rounded-xl border bg-card p-5">
