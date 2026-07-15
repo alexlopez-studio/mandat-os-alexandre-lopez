@@ -58,6 +58,16 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 - Audit qualité : `GET http://localhost:3000/` → `200` ; `GET http://localhost:3002/app/dashboard` → `200`.
 - Suite : reprendre le chantier prioritaire depuis l’état actuel de l’espace client et de Mandat OS, sans push.
 
+### 16/07/2026 - Livraison des modifications locales
+
+- Base/branche : `preview` intégrée dans `main`.
+- Type : livraison Git.
+- Statut : fait.
+- Résumé : les changements validés du portail client et de Mandat OS ont été commités, intégrés dans leurs branches `main` respectives, puis poussés sur les dépôts GitHub.
+- Fichiers : `docs/SUIVI_PROJET.md`.
+- Audit qualité : typage et build réussis dans les deux dépôts ; les serveurs locaux répondent `200` sur l’accueil du portail et `/app/dashboard`.
+- Suite : reprendre les développements depuis `preview`; aucune modification locale non commitée côté Mandat OS, hormis le workspace local ignoré.
+
 ### 12/07/2026 - Réorganisation opportunité et suivi client
 
 - Fiche opportunité simplifiée : onglets `Vue d’ensemble`, `Estimation`, `Suivi client`, `Historique`.
