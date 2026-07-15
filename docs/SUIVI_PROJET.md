@@ -48,6 +48,16 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 4. Stabiliser les variables Preview/Development si besoin.
 5. Continuer les développements Mandat OS uniquement dans ce repo.
 
+### 15/07/2026 - Reprise locale des deux applications
+
+- Base/branche : `preview`, alignée avec `origin/preview`.
+- Type : reprise / environnement local.
+- Statut : fait.
+- Résumé : redémarrage des serveurs de l’espace client autonome et de Mandat OS. Les changements locaux préexistants sont conservés (`../espace-client-alexandre-lopez/src/App.tsx` et le workspace local non suivi de Mandat OS).
+- Fichiers : `docs/SUIVI_PROJET.md`.
+- Audit qualité : `GET http://localhost:3000/` → `200` ; `GET http://localhost:3002/app/dashboard` → `200`.
+- Suite : reprendre le chantier prioritaire depuis l’état actuel de l’espace client et de Mandat OS, sans push.
+
 ### 12/07/2026 - Réorganisation opportunité et suivi client
 
 - Fiche opportunité simplifiée : onglets `Vue d’ensemble`, `Estimation`, `Suivi client`, `Historique`.
