@@ -426,6 +426,8 @@ function DashboardTab({
 
       <Reveal><PropertyHeroPanel vm={vm} onNavigate={() => onNavigate('valuation')} /></Reveal>
 
+      <PersonalizationPanel personalization={data.dossier.personalization} />
+
       {data.dossier.advisor_note && (
         <Reveal>
           <div className="portal-body rounded-3xl border border-primary/15 bg-accent p-5 text-primary">
@@ -436,6 +438,80 @@ function DashboardTab({
       )}
 
       <Reveal><DashboardCta /></Reveal>
+    </div>
+  )
+}
+
+function PersonalizationPanel({ personalization }: { personalization: Json | null | undefined }) {
+  const p = asRecord(personalization)
+  // Ne s'affiche que lorsque le conseiller a publié la personnalisation (draft → published).
+  if (text(p.status) !== 'published') return null
+
+  const clientProject = text(p.client_project)
+  const propertyStory = text(p.property_story)
+  const keyPoints = listValue(p.key_points)
+  const commitments = listValue(p.advisor_commitments)
+
+  if (!clientProject && !propertyStory && keyPoints.length === 0 && commitments.length === 0) {
+    return null
+  }
+
+  return (
+    <Reveal>
+      <section className="space-y-5 rounded-3xl border border-primary/15 bg-white p-6 shadow-sm md:p-8" id="personalization">
+        <header className="space-y-1">
+          <span className="portal-label inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-primary">
+            <Sparkles className="size-3.5" />
+            Personnalisé pour vous
+          </span>
+          <h2 className="portal-h2 text-foreground">Votre projet, au cœur de notre accompagnement</h2>
+          <p className="portal-meta text-muted-foreground">
+            Ce que nous avons retenu de notre rencontre, au-delà des chiffres du marché.
+          </p>
+        </header>
+
+        {(clientProject || propertyStory) && (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            {clientProject && <PersonalizationBlock title="Votre projet">{clientProject}</PersonalizationBlock>}
+            {propertyStory && <PersonalizationBlock title="L’histoire de votre bien">{propertyStory}</PersonalizationBlock>}
+          </div>
+        )}
+
+        {keyPoints.length > 0 && (
+          <PersonalizationList title="Ce que nous avons retenu de notre échange" items={keyPoints} tone="brand" />
+        )}
+        {commitments.length > 0 && (
+          <PersonalizationList title="Mes engagements pour vous" items={commitments} tone="foreground" />
+        )}
+      </section>
+    </Reveal>
+  )
+}
+
+function PersonalizationBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5 rounded-2xl border border-border bg-background p-4">
+      <h3 className="portal-h3 text-foreground">{title}</h3>
+      <p className="portal-body text-muted-foreground">{children}</p>
+    </div>
+  )
+}
+
+function PersonalizationList({ title, items, tone }: { title: string; items: string[]; tone: 'brand' | 'foreground' }) {
+  return (
+    <div className="space-y-2">
+      <h3 className="portal-h3 text-foreground">{title}</h3>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {items.map((item, index) => (
+          <li key={index} className="portal-body flex items-start gap-2 text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={`mt-1.5 size-1.5 shrink-0 rounded-full ${tone === 'brand' ? 'bg-primary' : 'bg-foreground'}`}
+            />
+            {item}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

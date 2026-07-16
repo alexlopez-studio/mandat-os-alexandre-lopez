@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { AudienceTrackingPanel } from '../opportunities/[id]/AudienceTrackingPanel'
+import { PersonalizationCard } from './PersonalizationCard'
 import type { Json } from '@/types/supabase'
 
 /**
@@ -335,6 +336,8 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
           </Button>
         </div>
       </section>
+
+      <PersonalizationCard dossierId={dossierId} />
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <PortalKpi icon={FileText} label="Documents validés" value={`${validatedDocuments}/${documents.length}`} helper={missingDocuments > 0 ? `${missingDocuments} à traiter` : 'Dossier à jour'} />

@@ -78,16 +78,23 @@ R1 Granola → transcript → l'IA EXTRAIT et CLASSE les items (client-facing vs
 ```
 Human-in-the-loop obligatoire. L'IA propose, le conseiller décide. Aucune auto-publication du transcript.
 
-## Affichage (Phase 3 — à venir)
+## Affichage (Phase 3 — fait)
 
-- Nouvelle section « personnalisée » dans `src/app/espace-client/portal-view.tsx` (rendre `personalization`
-  quand `status = 'published'`), en cohérence avec l'existant (`advisor_note` déjà affiché ~l.429).
-- Écran de validation côté admin (dossier / opportunité) pour éditer et publier.
-- Option anti-décalage : mot de synthèse personnalisé en tête d'espace client, voire addendum PDF
+- Section « personnalisée » dans l'espace client : composant `PersonalizationPanel`
+  (`src/app/espace-client/portal-view.tsx`), rendu dans le `DashboardTab` au-dessus du mot du
+  conseiller. **Ne s'affiche que si `personalization.status === 'published'`** (sinon rien).
+  Rubriques rendues : `client_project`, `property_story`, `key_points`, `advisor_commitments`.
+- Publication côté admin : composant `PersonalizationCard`
+  (`src/app/admin/market/clients/PersonalizationCard.tsx`), monté dans `DossierWorkspace` — aperçu
+  du contenu trié + bouton **Publier / Repasser en brouillon**.
+- API : `PATCH /api/market/clients/[id]` accepte désormais `dossier.personalization` (objet JSON).
+- Le champ est chargé automatiquement (`select('*')` dans `client-portal.ts` et `client-admin.ts`) et
+  préservé par la projection `projectClientDossierFromOpportunity`.
+- Option anti-décalage (non faite) : mot de synthèse en tête d'espace client, voire addendum PDF
   personnalisé annexé au Yanport.
 
 ## État
 
 - [x] Phase 1 — structures de données créées (`client_dossiers.personalization`, `opportunities.internal_intel`).
-- [ ] Phase 2 — workflow de curation depuis Granola.
-- [ ] Phase 3 — affichage espace client + écran de validation admin.
+- [x] Phase 2 — extraction/curation depuis Granola (validation manuelle, cas Murer).
+- [x] Phase 3 — affichage espace client (`PersonalizationPanel`) + écran de publication admin (`PersonalizationCard`).

@@ -302,6 +302,7 @@ export type Database = {
           property_snapshot: Json
           advisor_note: string | null
           professional_opinion: Json
+          personalization: Json
           client_welcome_seen_at: string | null
           created_at: string
           updated_at: string
@@ -320,6 +321,7 @@ export type Database = {
           property_snapshot?: Json
           advisor_note?: string | null
           professional_opinion?: Json
+          personalization?: Json
           client_welcome_seen_at?: string | null
           created_at?: string
           updated_at?: string
@@ -338,6 +340,7 @@ export type Database = {
           property_snapshot?: Json
           advisor_note?: string | null
           professional_opinion?: Json
+          personalization?: Json
           client_welcome_seen_at?: string | null
           created_at?: string
           updated_at?: string
@@ -991,6 +994,7 @@ export type Database = {
           follow_up_at: string | null
           property_snapshot: Json
           professional_opinion: Json
+          internal_intel: Json
           created_from: string
           created_at: string
           updated_at: string
@@ -1027,6 +1031,7 @@ export type Database = {
           follow_up_at?: string | null
           property_snapshot?: Json
           professional_opinion?: Json
+          internal_intel?: Json
           created_from?: string
           created_at?: string
           updated_at?: string
@@ -1063,6 +1068,7 @@ export type Database = {
           follow_up_at?: string | null
           property_snapshot?: Json
           professional_opinion?: Json
+          internal_intel?: Json
           created_from?: string
           created_at?: string
           updated_at?: string
