@@ -49,6 +49,10 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     for (const key of ['title', 'status', 'advisor_note']) {
       if (key in dossier) dossierPayload[key] = normalizeValue(dossier[key])
     }
+    // Personnalisation espace client (issue du R1) : objet JSON curé + statut draft/published.
+    if ('personalization' in dossier) {
+      dossierPayload.personalization = asRecord(dossier.personalization) as Json
+    }
 
     const propertySnapshotPatch = 'property_snapshot' in body ? asRecord(body.property_snapshot) : null
     const professionalOpinionPatch = 'professional_opinion' in dossier ? asRecord(dossier.professional_opinion) : null

@@ -77,6 +77,7 @@ function dossier(id: string) {
       title: 'Client',
       property_snapshot: {},
       professional_opinion: {},
+      personalization: {},
       advisor_note: null,
       client_welcome_seen_at: null,
       created_at: '2026-07-05T12:00:00.000Z',
