@@ -23,11 +23,14 @@ export type ClientPortalPayload = {
   sales_follow_up: {
     status: 'teaser' | 'active'
   }
+  mandate_stage: string | null
   profile: Pick<ClientProfile, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'>
   dossier: Pick<
     ClientDossier,
     'id' | 'public_token' | 'status' | 'title' | 'client_type' | 'property_snapshot' | 'professional_opinion' | 'advisor_note' | 'created_at' | 'updated_at'
-  >
+  > & {
+    mandate_signed_at: string | null
+  }
   documents: Array<Pick<ClientDocument, 'id' | 'label' | 'category' | 'status' | 'file_name' | 'file_size' | 'mime_type' | 'uploaded_at' | 'validated_at'> & {
     signed_url: string | null
   }>
@@ -132,6 +135,7 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
     sales_follow_up: {
       status: isSalesFollowUpActive(detail.opportunity?.stage) ? 'active' : 'teaser',
     },
+    mandate_stage: detail.opportunity?.stage ?? null,
     profile: {
       id: profile.id,
       email: profile.email,
@@ -150,6 +154,7 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
       advisor_note: detail.dossier.advisor_note,
       created_at: detail.dossier.created_at,
       updated_at: detail.dossier.updated_at,
+      mandate_signed_at: (detail.dossier as any).mandate_signed_at ?? null,
     },
     documents: detail.documents.map((document) => ({
       id: document.id,
