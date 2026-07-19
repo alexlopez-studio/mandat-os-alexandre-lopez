@@ -119,6 +119,8 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
   const [openingClientLink, setOpeningClientLink] = useState(false)
   const [copyingClientLink, setCopyingClientLink] = useState(false)
   const [tab, setTab] = useState('documents')
+  const [mandateSignedAt, setMandateSignedAt] = useState<string | null>(null)
+  const [savingMandateDate, setSavingMandateDate] = useState(false)
 
   const fetchDetail = useCallback(async () => {
     const res = await fetch(`/api/market/clients/${dossierId}`)
@@ -130,6 +132,7 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
     setDocuments(json.data.documents ?? [])
     setEvents(json.data.events ?? [])
     setEstimationPublished(Boolean(json.data.dossier?.professional_opinion?.client_portal_published))
+    setMandateSignedAt(json.data.dossier?.mandate_signed_at ?? null)
   }, [dossierId])
 
   useEffect(() => {
@@ -282,16 +285,35 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
   async function publishEstimation() {
     setPublishingEstimation(true)
     try {
-      const res = await fetch(`/api/market/clients/${dossierId}/publish-estimation`, { method: 'POST' })
+      const res = await fetch(`/api/market/clients/${dossierId}/publish-estimation`, { method: "POST" })
       const json = await res.json()
-      if (!res.ok || !json.success) throw new Error(json.error ?? 'Publication impossible')
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Publication impossible")
       setEstimationPublished(true)
-      toast.success('Estimation publiée dans l’espace client')
+      toast.success("Estimation publiée dans l’espace client")
       await fetchDetail()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Publication impossible')
+      toast.error(err instanceof Error ? err.message : "Publication impossible")
     } finally {
       setPublishingEstimation(false)
+    }
+  }
+
+  async function updateMandateSignedAt(date: string | null) {
+    setSavingMandateDate(true)
+    try {
+      const res = await fetch(`/api/market/clients/${dossierId}/mandate-signed-at`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mandate_signed_at: date }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error ?? "Mise à jour impossible")
+      setMandateSignedAt(date)
+      toast.success("Date de signature mise à jour")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Mise à jour impossible")
+    } finally {
+      setSavingMandateDate(false)
     }
   }
 
@@ -344,6 +366,21 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
         <PortalKpi icon={BookOpen} label="Plan publié" value={String(planEvents.length)} helper={`${visibleEvents} élément(s) visibles client`} />
         <PortalKpi icon={CalendarDays} label="Visites" value={String(visitEvents.length)} helper={visitEvents.some((event) => event.status === 'planned') ? 'Visite programmée' : 'Historique visites'} />
         <PortalKpi icon={CheckCircle2} label="Offres" value={String(offerEvents.length)} helper={offerEvents.some((event) => ['new', 'pending', 'counter'].includes(event.status)) ? 'À suivre' : 'Suivi commercial'} />
+      </section>
+
+      <section className="rounded-2xl border bg-white p-4 shadow-sm">
+        <label className="block text-sm font-semibold text-foreground mb-2">Date de signature du mandat</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={mandateSignedAt && typeof mandateSignedAt === "string" ? new Date(mandateSignedAt).toISOString().split("T")[0] : ""}
+            onChange={(e) => updateMandateSignedAt(e.target.value ? new Date(e.target.value).toISOString() : null)}
+            disabled={savingMandateDate}
+            className={ADMIN_INPUT_CLASS}
+          />
+          {savingMandateDate && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          {mandateSignedAt && typeof mandateSignedAt === "string" && <span className="text-xs text-muted-foreground">{new Date(mandateSignedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</span>}
+        </div>
       </section>
 
       <TabsList className="flex h-auto flex-wrap justify-start rounded-2xl border bg-white p-1 shadow-sm">
