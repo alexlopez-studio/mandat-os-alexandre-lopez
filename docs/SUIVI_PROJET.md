@@ -68,6 +68,22 @@ Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à
 - Audit qualité : typage et build réussis dans les deux dépôts ; les serveurs locaux répondent `200` sur l’accueil du portail et `/app/dashboard`.
 - Suite : reprendre les développements depuis `preview`; aucune modification locale non commitée côté Mandat OS, hormis le workspace local ignoré.
 
+### 24/07/2026 - Compte client de démo + séparation base preview/production
+
+- Base/branche : `preview`, alignée avec `origin/preview` (commit `5145310`), poussée à la demande explicite d'Alexandre.
+- Type : fonctionnalité produit (démo commerciale) + infrastructure Supabase/Vercel.
+- Statut : **fait**.
+- Travail :
+  1. Ajout d'un dossier client de démo unique, basculable entre 3 étapes du parcours vendeur (estimation en préparation / publiée / mandat signé) depuis un nouvel écran admin `/app/demo`, pour les présentations et démos commerciales.
+  2. Isolation de ce dossier des vraies statistiques via un flag `is_test` ajouté sur `opportunities`, `client_dossiers`, `client_dossier_events`, `leads` (migration `030_demo_seller_scenario.sql`), avec filtres appliqués au dashboard, au Kanban, à la liste des dossiers clients et aux contacts.
+  3. Provisionnement d'un second projet Supabase dédié, `mandat-os-preview` (`ntlbforzrdmeifpzfjtk`), avec le schéma cloné à l'identique de la production (43 tables, RLS, policies, triggers, index) via `pg_dump`/restauration ciblée, pour que le dev local et les déploiements Vercel Preview cessent d'écrire dans la vraie base de production.
+  4. Bascule de `.env.local` (mandat-os et espace-client) vers ce nouveau projet ; configuration des variables Supabase + URLs croisées (`CLIENT_PORTAL_URL`, `VITE_MANDAT_OS_API_URL`) en scope Preview sur les deux projets Vercel.
+  5. Réconciliation avec un travail concurrent arrivé entre-temps sur `origin/preview` (`557276f feat: add mandate signature date tracking`) : adoption de leur vraie colonne `client_dossiers.mandate_signed_at` à la place du contournement initial via `professional_opinion.client_portal_mandate_signed_at` ; migration locale renumérotée `029` → `030` pour éviter la collision avec leur `029_mandate_signature_date.sql`.
+- Fichiers principaux : `supabase/migrations/030_demo_seller_scenario.sql`, `src/lib/market/demo-dossier.ts`, `src/app/admin/market/demo/page.tsx`, `src/app/api/market/demo/{status,apply-scenario}/route.ts`, `src/lib/client-portal-payload.ts`, `src/app/api/{leads/list,leads/stats,market/clients,market/dashboard,market/opportunities}/route.ts`, `src/components/app-sidebar.tsx`, `.claude/launch.json`.
+- Vérification : `npx tsc --noEmit` OK ; suite de tests ciblée OK (18/18, dont un mock Supabase corrigé dans `dashboard/__tests__/route.test.ts` pour supporter `.eq()`) — 2 échecs préexistants et sans rapport (`ademe.test.ts`, `magic-link-template.test.ts`) laissés en l'état ; audit navigateur des 3 scénarios en local (avant et après bascule preview) confirmant l'isolation (dashboard/Kanban/contacts inchangés côté prod).
+- Point de vigilance : les futures migrations Supabase doivent désormais être appliquées aux **deux** projets (`byrsmbgfkvgxdtdyhrro` prod + `ntlbforzrdmeifpzfjtk` preview). Les projets Supabase orphelins `supabase-alex-lopez-provence` et `app-alex-lopez-provence` restent en pause, à supprimer manuellement par Alexandre depuis le dashboard si souhaité (aucun outil ne permet de le faire depuis ce repo).
+- Suite : pousser sur `preview` déclenchera un redéploiement Vercel Preview avec les nouvelles variables (corrige aussi le 500 constaté précédemment sur l'URL preview de mandat-os, faute de variables Supabase) ; renommage éventuel du projet Supabase de prod en `mandat-os-production` à faire depuis le dashboard.
+
 ### 12/07/2026 - Réorganisation opportunité et suivi client
 
 - Fiche opportunité simplifiée : onglets `Vue d’ensemble`, `Estimation`, `Suivi client`, `Historique`.
