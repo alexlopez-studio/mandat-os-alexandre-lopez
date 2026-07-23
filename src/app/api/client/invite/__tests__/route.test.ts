@@ -87,6 +87,7 @@ beforeEach(() => {
       client_type: 'seller',
       buyer_lead_id: null,
       public_token: 'seller-token',
+      is_test: false,
       status: 'active',
       title: 'Projet vendeur',
       property_snapshot: {},

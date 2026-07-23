@@ -28,9 +28,7 @@ export type ClientPortalPayload = {
   dossier: Pick<
     ClientDossier,
     'id' | 'public_token' | 'status' | 'title' | 'client_type' | 'property_snapshot' | 'professional_opinion' | 'advisor_note' | 'created_at' | 'updated_at'
-  > & {
-    mandate_signed_at: string | null
-  }
+  > & { mandate_signed_at: string | null }
   documents: Array<Pick<ClientDocument, 'id' | 'label' | 'category' | 'status' | 'file_name' | 'file_size' | 'mime_type' | 'uploaded_at' | 'validated_at'> & {
     signed_url: string | null
   }>

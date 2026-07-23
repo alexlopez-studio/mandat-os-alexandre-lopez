@@ -127,6 +127,7 @@ const FAKE_LEAD = {
   magic_link_expires_at: '2026-06-02T12:00:00.000Z',
   magic_link_sent_at: null,
   deleted_at: null,
+  is_test: false,
   created_at: '2026-05-03T12:00:00.000Z',
   updated_at: '2026-05-03T12:00:00.000Z',
 }

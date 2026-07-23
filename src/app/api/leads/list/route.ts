@@ -63,6 +63,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
             { count: 'exact' },
         )
         .is('deleted_at', null)
+        .eq('is_test', false)
 
     // Filtres
     if (statusFilter) {

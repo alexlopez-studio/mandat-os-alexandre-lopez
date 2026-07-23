@@ -89,6 +89,7 @@ export async function GET() {
       supabaseAdmin
         .from('opportunities')
         .select('id,title,stage,priority,next_action,due_date,follow_up_at,created_at,updated_at')
+        .eq('is_test', false)
         .order('created_at', { ascending: false })
         .limit(500),
       supabaseAdmin
@@ -105,18 +106,21 @@ export async function GET() {
       supabaseAdmin
         .from('client_dossiers')
         .select('id,title,client_type,status,created_at,updated_at')
+        .eq('is_test', false)
         .order('updated_at', { ascending: false })
         .limit(500),
       supabaseAdmin
         .from('client_dossier_events')
         .select('id,dossier_id,type,title,description,status,event_date,created_at')
         .in('status', ['todo', 'blocked'])
+        .eq('is_test', false)
         .order('event_date', { ascending: true, nullsFirst: false })
         .limit(500),
       supabaseAdmin
         .from('leads')
         .select('id,tool,status,priority,next_action,due_date,follow_up_at,commune,created_at')
         .is('deleted_at', null)
+        .eq('is_test', false)
         .order('created_at', { ascending: false })
         .limit(500),
       supabaseAdmin

@@ -73,6 +73,7 @@ function dossier(id: string) {
       client_type: 'seller',
       buyer_lead_id: null,
       public_token: `${id}-token`,
+      is_test: false,
       status: 'active',
       title: 'Client',
       property_snapshot: {},

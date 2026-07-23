@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
     let query = supabaseAdmin
       .from('client_dossiers')
       .select('*, client_profile:client_profiles(*)', { count: 'exact' })
+      .eq('is_test', false)
       .order('updated_at', { ascending: false })
 
     if (status) {
