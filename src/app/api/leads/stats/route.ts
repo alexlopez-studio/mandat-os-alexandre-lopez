@@ -38,14 +38,14 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
             semaineResult,
             moisResult,
         ] = await Promise.all([
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('status', 'nouveau'),
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('tool', 'vendre'),
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('tool', 'acheter'),
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('tool', 'audit'),
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', todayStart),
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', weekStartISO),
-            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).gte('created_at', monthStart),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false).eq('status', 'nouveau'),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false).eq('tool', 'vendre'),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false).eq('tool', 'acheter'),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false).eq('tool', 'audit'),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false).gte('created_at', todayStart),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false).gte('created_at', weekStartISO),
+            supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('deleted_at', null).eq('is_test', false).gte('created_at', monthStart),
         ])
 
         const count = (r: typeof totalResult) => r.count ?? 0

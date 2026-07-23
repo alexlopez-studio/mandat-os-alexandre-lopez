@@ -132,6 +132,7 @@ export type Database = {
           magic_link_expires_at: string
           magic_link_sent_at: string | null
           deleted_at: string | null
+          is_test: boolean
           created_at: string
           updated_at: string
         }
@@ -151,6 +152,7 @@ export type Database = {
           magic_link_expires_at?: string
           magic_link_sent_at?: string | null
           deleted_at?: string | null
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -170,6 +172,7 @@ export type Database = {
           magic_link_expires_at?: string
           magic_link_sent_at?: string | null
           deleted_at?: string | null
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -304,6 +307,7 @@ export type Database = {
           professional_opinion: Json
           personalization: Json
           client_welcome_seen_at: string | null
+          is_test: boolean
           created_at: string
           updated_at: string
         }
@@ -323,6 +327,7 @@ export type Database = {
           professional_opinion?: Json
           personalization?: Json
           client_welcome_seen_at?: string | null
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -342,6 +347,7 @@ export type Database = {
           professional_opinion?: Json
           personalization?: Json
           client_welcome_seen_at?: string | null
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -453,6 +459,7 @@ export type Database = {
           payload: Json
           visible_to_client: boolean
           created_by: string | null
+          is_test: boolean
           created_at: string
           updated_at: string
         }
@@ -467,6 +474,7 @@ export type Database = {
           payload?: Json
           visible_to_client?: boolean
           created_by?: string | null
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -481,6 +489,7 @@ export type Database = {
           payload?: Json
           visible_to_client?: boolean
           created_by?: string | null
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -996,6 +1005,7 @@ export type Database = {
           professional_opinion: Json
           internal_intel: Json
           created_from: string
+          is_test: boolean
           created_at: string
           updated_at: string
         }
@@ -1033,6 +1043,7 @@ export type Database = {
           professional_opinion?: Json
           internal_intel?: Json
           created_from?: string
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -1070,6 +1081,7 @@ export type Database = {
           professional_opinion?: Json
           internal_intel?: Json
           created_from?: string
+          is_test?: boolean
           created_at?: string
           updated_at?: string
         }

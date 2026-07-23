@@ -195,6 +195,7 @@ export async function GET(req: NextRequest) {
     let query = supabaseAdmin
       .from('opportunities')
       .select('*', { count: 'exact' })
+      .eq('is_test', false)
 
     // Filtres
     if (stage) query = query.eq('stage', stage)

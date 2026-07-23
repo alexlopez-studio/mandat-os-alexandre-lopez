@@ -13,6 +13,7 @@ import {
   PackageIcon,
   UserPlusIcon,
   FlameIcon,
+  PlayCircleIcon,
   type LucideIcon,
 } from "lucide-react"
 import type { AdminRole } from "@/types/supabase"
@@ -53,6 +54,7 @@ const MARKET_ITEMS: SidebarNavItem[] = [
 ]
 
 const CONFIG_ITEMS: SidebarNavItem[] = [
+  { title: "Démo client", url: "/app/demo", icon: PlayCircleIcon },
   { title: "Paramètres", url: "/app/settings", icon: SettingsIcon },
 ]
 

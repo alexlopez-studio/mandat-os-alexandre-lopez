@@ -10,6 +10,7 @@ vi.mock('@/lib/supabase', () => ({
       const chain: Record<string, unknown> = {}
       chain.select = vi.fn(() => chain)
       chain.is = vi.fn(() => chain)
+      chain.eq = vi.fn(() => chain)
       chain.in = vi.fn(() => chain)
       chain.order = vi.fn(() => chain)
       chain.limit = vi.fn(() => Promise.resolve({ data: mocks.tableData.get(table) ?? [], error: null }))
