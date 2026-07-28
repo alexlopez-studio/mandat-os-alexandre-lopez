@@ -7,13 +7,13 @@ describe('buildMagicLinkEmail', () => {
 	it('returns vendre subject, html and text containing greeting + url + cta', () => {
 		const out = buildMagicLinkEmail({ prenom: 'Marie', magicLinkUrl: MAGIC_URL, type: 'vendre' })
 
-		expect(out.subject).toBe('Votre estimation est prête — Alex Lopez Provence')
+		expect(out.subject).toBe('Votre estimation personnalisée est prête — Alex Lopez Provence')
 		expect(out.html).toContain('Bonjour Marie,')
 		expect(out.html).toContain(MAGIC_URL)
-		expect(out.html).toContain('Voir mon estimation')
+		expect(out.html).toContain('Consulter mon estimation')
 		expect(out.text).toContain('Bonjour Marie,')
 		expect(out.text).toContain(MAGIC_URL)
-		expect(out.text).toContain('Voir mon estimation')
+		expect(out.text).toContain('Consulter mon estimation')
 	})
 
 	it('uses acheter copy when type is acheter', () => {

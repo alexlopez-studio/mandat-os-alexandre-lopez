@@ -69,7 +69,7 @@ describe('lib/ademe.findDpeNearby', () => {
   it('returns exact confidence when DPE within 30m and surface matches', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: { body: { total: 1, results: [record()] } },
       },
     ])
@@ -84,7 +84,7 @@ describe('lib/ademe.findDpeNearby', () => {
   it('returns approximatif when surface mismatches > 10% even at close distance', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: {
           body: {
             total: 1,
@@ -100,7 +100,7 @@ describe('lib/ademe.findDpeNearby', () => {
   it('returns approximatif when DPE is between 30m and 150m', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: {
           body: {
             total: 1,
@@ -117,11 +117,11 @@ describe('lib/ademe.findDpeNearby', () => {
   it('falls back to logements-neufs when existing returns empty', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: { body: { total: 0, results: [] } },
       },
       {
-        match: 'dpe-v2-logements-neufs',
+        match: 'dpe02neuf',
         response: {
           body: {
             total: 1,
@@ -139,7 +139,7 @@ describe('lib/ademe.findDpeNearby', () => {
   it('returns non_trouve gracefully on HTTP 500', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: { status: 500, body: { error: 'boom' } },
       },
     ])
@@ -159,7 +159,7 @@ describe('lib/ademe.findDpeNearby', () => {
   it('picks the closest record when multiple are returned', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: {
           body: {
             total: 2,
@@ -182,7 +182,7 @@ describe('lib/ademe.getDpeByNumber', () => {
   it('returns the record when found in existing', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: { body: { total: 1, results: [record()] } },
       },
     ])
@@ -194,11 +194,11 @@ describe('lib/ademe.getDpeByNumber', () => {
   it('falls back to neufs when not in existing', async () => {
     mockFetch([
       {
-        match: 'dpe-v2-logements-existants',
+        match: 'dpe03existant',
         response: { body: { total: 0, results: [] } },
       },
       {
-        match: 'dpe-v2-logements-neufs',
+        match: 'dpe02neuf',
         response: { body: { total: 1, results: [record({ numero_dpe: 'NEUF1' })] } },
       },
     ])
