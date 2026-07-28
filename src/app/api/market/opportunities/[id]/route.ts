@@ -98,9 +98,19 @@ async function enrichOpportunity(opportunity: Database['public']['Tables']['oppo
 
   const clientDossier = await loadClientDossierLink(opportunity)
 
+  const { data: pendingImport } = await supabaseAdmin
+    .from('estimation_imports')
+    .select('id, kind, source, price_low, price_high, price_m2, confidence, summary, created_at, payload')
+    .eq('opportunity_id', opportunity.id)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   return {
     ...opportunity,
     client_dossier: clientDossier,
+    latest_pending_estimation_import: pendingImport ?? null,
     property: propertyResponse.data
       ? {
         ...propertyResponse.data,
