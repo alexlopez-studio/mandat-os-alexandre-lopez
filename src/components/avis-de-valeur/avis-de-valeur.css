@@ -1,0 +1,89 @@
+/*
+ * Mise en page A4 de l'avis de valeur.
+ *
+ * Feuille dédiée, importée uniquement par la route du rapport : elle impose des
+ * dimensions physiques et des règles d'impression qui n'ont rien à faire dans le
+ * reste de l'application.
+ */
+
+.avv-document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10mm;
+}
+
+.avv-page {
+  width: 210mm;
+  min-width: 210mm;
+  height: 297mm;
+  min-height: 297mm;
+  box-sizing: border-box;
+  position: relative;
+  background-color: #ffffff;
+  /*
+   * Volontairement pas d'`overflow: hidden`. Masquer le débordement rend la
+   * page belle et supprime une ligne sans prévenir ; ici un dépassement se voit
+   * à l'écran et le test de garde-fou le détecte.
+   */
+  overflow: visible;
+}
+
+/* Chiffres serrés, comme dans la maquette : le suivi négatif tient les grands nombres. */
+.avv-figure {
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Écran ─────────────────────────────────────────────────────────────── */
+
+@media screen {
+  .avv-page {
+    box-shadow: 0 10px 40px rgb(15 23 42 / 0.18);
+    border: 1px solid #e2e8f0;
+  }
+}
+
+/* ─── Impression ────────────────────────────────────────────────────────── */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 210mm;
+    margin: 0;
+    padding: 0;
+    background: #ffffff !important;
+  }
+
+  /* Les aplats de couleur font partie du document, pas de la décoration. */
+  body,
+  .avv-page {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .avv-no-print {
+    display: none !important;
+  }
+
+  .avv-document {
+    gap: 0;
+  }
+
+  .avv-page {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    break-after: page;
+    break-inside: avoid;
+  }
+
+  .avv-page:last-child {
+    break-after: auto;
+  }
+}
