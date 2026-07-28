@@ -26,13 +26,16 @@ import {
   Plus,
   Rocket,
   Search,
+  Sparkles,
   StickyNote,
   Trash2,
   UserRound,
+  XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -111,6 +114,20 @@ interface Opportunity {
   property: PropertyInfo | null
   events: OpportunityEvent[]
   client_dossier: ClientDossierLink | null
+  latest_pending_estimation_import: PendingEstimationImport | null
+}
+
+interface PendingEstimationImport {
+  id: string
+  kind: string
+  source: string
+  price_low: number | null
+  price_high: number | null
+  price_m2: number | null
+  confidence: number | null
+  summary: string | null
+  created_at: string
+  payload: Record<string, unknown>
 }
 
 interface ClientDossierLink {
@@ -284,6 +301,15 @@ interface ProfessionalDraft {
   client_reviews_json: string
   iad_advantages: string
   iad_services: string
+  socio_economic_json: string
+  market_distribution_json: string
+  market_trend_json: string
+  market_tension_json: string
+  comparables_competing_json: string
+  comparables_unsold_json: string
+  positioning_extended_json: string
+  synthesis_json: string
+  track_record_json: string
 }
 
 const STAGES = [
@@ -408,6 +434,15 @@ const EMPTY_PROFESSIONAL_DRAFT: ProfessionalDraft = {
   client_reviews_json: '[]',
   iad_advantages: '',
   iad_services: '',
+  socio_economic_json: '{}',
+  market_distribution_json: '{}',
+  market_trend_json: '{}',
+  market_tension_json: '{}',
+  comparables_competing_json: '[]',
+  comparables_unsold_json: '[]',
+  positioning_extended_json: '{}',
+  synthesis_json: '{}',
+  track_record_json: '[]',
 }
 
 function emptyEventDraft(type: OpportunityEventType): EventDraft {
@@ -518,6 +553,23 @@ function jsonArrayString(value: unknown) {
   return JSON.stringify(Array.isArray(value) ? value : [], null, 2)
 }
 
+function parseJsonObject(value: string, label: string) {
+  if (!value.trim()) return {}
+  try {
+    const parsed = JSON.parse(value)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+    toast.error(`${label} doit être un objet JSON`)
+    return {}
+  } catch {
+    toast.error(`${label} JSON invalide`)
+    return {}
+  }
+}
+
+function jsonObjectString(value: unknown) {
+  return JSON.stringify(value && typeof value === 'object' && !Array.isArray(value) ? value : {}, null, 2)
+}
+
 function propertyDraftFromOpportunity(opportunity: Opportunity): PropertyDraft {
   const snapshot = asRecord(opportunity.property_snapshot)
   const leadProperty = opportunity.lead?.seller_property
@@ -616,6 +668,21 @@ function professionalDraftFromOpportunity(opportunity: Opportunity): Professiona
     client_reviews_json: jsonArrayString(iadProof.client_reviews),
     iad_advantages: listValue(services.advantages).join('\n'),
     iad_services: listValue(services.services).join('\n'),
+    socio_economic_json: jsonObjectString(report.socio_economic),
+    market_distribution_json: jsonObjectString(market.distribution),
+    market_trend_json: jsonObjectString(market.trend),
+    market_tension_json: jsonObjectString(market.tension),
+    comparables_competing_json: jsonArrayString(comparables.competing),
+    comparables_unsold_json: jsonArrayString(comparables.unsold),
+    positioning_extended_json: jsonObjectString({
+      price_per_sqm_rank: positioning.price_per_sqm_rank,
+      total_competitors: positioning.total_competitors,
+      cheaper_and_larger_percent: positioning.cheaper_and_larger_percent,
+      thresholds: positioning.thresholds,
+      average_competitor_price_per_sqm: positioning.average_competitor_price_per_sqm,
+    }),
+    synthesis_json: jsonObjectString(report.synthesis),
+    track_record_json: jsonArrayString(report.track_record),
   }
 }
 
@@ -642,6 +709,7 @@ function normalizeProfessionalDraft(draft: ProfessionalDraft) {
   const comparables = parseComparables(draft.comparables_json)
   const argumentsList = draft.arguments.split('\n').map((line) => line.trim()).filter(Boolean)
   const recommendations = draft.recommendations.split('\n').map((line) => line.trim()).filter(Boolean)
+  const trackRecord = parseJsonArray(draft.track_record_json, 'Biens vendus par iad')
   return {
     price: nullableNumber(draft.price),
     price_suggested: nullableNumber(draft.price),
@@ -686,6 +754,9 @@ function normalizeProfessionalDraft(draft: ProfessionalDraft) {
         sale_delay_fast: nullableNumber(draft.sale_delay_fast),
         sale_delay_median: nullableNumber(draft.sale_delay_median),
         sale_delay_slow: nullableNumber(draft.sale_delay_slow),
+        distribution: parseJsonObject(draft.market_distribution_json, 'Répartition du marché'),
+        trend: parseJsonObject(draft.market_trend_json, 'Tendance du marché'),
+        tension: parseJsonObject(draft.market_tension_json, 'Tension du marché'),
       },
       competition: {
         criteria: draft.competition_criteria.split('\n').map((line) => line.trim()).filter(Boolean),
@@ -701,6 +772,8 @@ function normalizeProfessionalDraft(draft: ProfessionalDraft) {
         average_per_sqm: nullableNumber(draft.comparables_summary_average_per_sqm),
         low_per_sqm: nullableNumber(draft.comparables_summary_low_per_sqm),
         high_per_sqm: nullableNumber(draft.comparables_summary_high_per_sqm),
+        competing: parseJsonArray(draft.comparables_competing_json, 'Biens en concurrence'),
+        unsold: parseJsonArray(draft.comparables_unsold_json, 'Biens invendus'),
       },
       positioning: {
         reference_price: nullableNumber(draft.positioning_reference_price),
@@ -717,6 +790,7 @@ function normalizeProfessionalDraft(draft: ProfessionalDraft) {
         threshold_low_price: nullableNumber(draft.positioning_threshold_low_price),
         threshold_median_price: nullableNumber(draft.positioning_threshold_median_price),
         threshold_high_price: nullableNumber(draft.positioning_threshold_high_price),
+        ...parseJsonObject(draft.positioning_extended_json, 'Positionnement étendu'),
       },
       conclusion: {
         recommendations,
@@ -724,13 +798,16 @@ function normalizeProfessionalDraft(draft: ProfessionalDraft) {
         legal_notice: draft.legal_notice.trim() || null,
       },
       iad_proof: {
-        sold_properties: parseJsonArray(draft.iad_sold_properties_json, 'Nos biens vendus'),
+        sold_properties: trackRecord.length > 0 ? trackRecord : parseJsonArray(draft.iad_sold_properties_json, 'Nos biens vendus'),
         client_reviews: parseJsonArray(draft.client_reviews_json, 'Avis clients'),
       },
       services: {
         advantages: draft.iad_advantages.split('\n').map((line) => line.trim()).filter(Boolean),
         services: draft.iad_services.split('\n').map((line) => line.trim()).filter(Boolean),
       },
+      socio_economic: parseJsonObject(draft.socio_economic_json, 'Contexte socio-économique'),
+      synthesis: parseJsonObject(draft.synthesis_json, 'Synthèse des prix'),
+      track_record: trackRecord,
     },
   }
 }
@@ -768,6 +845,9 @@ export default function OpportunityDetailPage() {
   const [openingClientLink, setOpeningClientLink] = useState(false)
   const [copyingClientLink, setCopyingClientLink] = useState(false)
   const [publishingEstimation, setPublishingEstimation] = useState(false)
+  const [applyingImport, setApplyingImport] = useState(false)
+  const [rejectingImport, setRejectingImport] = useState(false)
+  const [overwriteEditorial, setOverwriteEditorial] = useState(false)
   const [propertyDraft, setPropertyDraft] = useState<PropertyDraft>(EMPTY_PROPERTY_DRAFT)
   const [professionalDraft, setProfessionalDraft] = useState<ProfessionalDraft>(EMPTY_PROFESSIONAL_DRAFT)
   const [savingPreparation, setSavingPreparation] = useState(false)
@@ -902,6 +982,45 @@ export default function OpportunityDetailPage() {
       toast.error(err instanceof Error ? err.message : 'Publication impossible')
     } finally {
       setPublishingEstimation(false)
+    }
+  }
+
+  async function applyPendingEstimationImport() {
+    const importId = opportunity?.latest_pending_estimation_import?.id
+    if (!importId) return
+    setApplyingImport(true)
+    try {
+      const res = await fetch(`/api/market/opportunities/${id}/estimation-imports/${importId}/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ overwrite_editorial: overwriteEditorial }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error ?? 'Application impossible')
+      toast.success('Import appliqué à l’avis de valeur')
+      setOverwriteEditorial(false)
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Application impossible')
+    } finally {
+      setApplyingImport(false)
+    }
+  }
+
+  async function rejectPendingEstimationImport() {
+    const importId = opportunity?.latest_pending_estimation_import?.id
+    if (!importId) return
+    setRejectingImport(true)
+    try {
+      const res = await fetch(`/api/estimation-imports/${importId}/reject`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error ?? 'Rejet impossible')
+      toast.success('Import rejeté')
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Rejet impossible')
+    } finally {
+      setRejectingImport(false)
     }
   }
 
@@ -1542,11 +1661,16 @@ export default function OpportunityDetailPage() {
           </section>
 
           <section className="mt-5 rounded-xl border bg-card p-5">
-            <div className="mb-5">
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold">Estimation & avis de valeur</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Prépare l’avis de valeur avant signature, sans créer de client.</p>
               </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/admin/avis-de-valeur/${id}`} target="_blank">
+                  <FileText className="mr-1 size-3.5" /> Ouvrir le rapport A4
+                </Link>
+              </Button>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
@@ -1559,6 +1683,18 @@ export default function OpportunityDetailPage() {
               <DraftArea label="Synthèse de l’avis" value={professionalDraft.summary} onChange={(value) => setProfessionalDraft((draft) => ({ ...draft, summary: value }))} rows={5} />
               <DraftArea label="Arguments de valeur" value={professionalDraft.arguments} onChange={(value) => setProfessionalDraft((draft) => ({ ...draft, arguments: value }))} rows={5} />
             </div>
+
+            {opportunity.latest_pending_estimation_import ? (
+              <PendingEstimationImportBanner
+                pendingImport={opportunity.latest_pending_estimation_import}
+                overwriteEditorial={overwriteEditorial}
+                setOverwriteEditorial={setOverwriteEditorial}
+                applying={applyingImport}
+                rejecting={rejectingImport}
+                onApply={applyPendingEstimationImport}
+                onReject={rejectPendingEstimationImport}
+              />
+            ) : null}
 
             <ValuationReportEditor draft={professionalDraft} setDraft={setProfessionalDraft} />
           </section>
@@ -1856,8 +1992,171 @@ function ValuationReportEditor({
           <DraftArea label="Les services iad" value={draft.iad_services} onChange={(value) => set('iad_services', value)} rows={6} />
         </div>
       </ReportSection>
+
+      <ReportSection title="11. Contexte socio-économique">
+        <p className="text-xs text-muted-foreground">Population, ménages, revenus, profils acquéreurs (page « Contexte socio-économique » du PDF).</p>
+        <DraftJsonArea
+          label="Contexte socio-économique JSON"
+          value={draft.socio_economic_json}
+          onChange={(value) => set('socio_economic_json', value)}
+          rows={10}
+          placeholder={'{\n  "population": 4820, "households": 2140, "median_income": 2380, "interest_rate": 3.85,\n  "buyer_profiles": [\n    { "type": "COUPLE", "interested_in": "35% – Recherche T3", "budget_low": 180000, "budget_high": 240000, "income_low": 2900, "income_high": 3600 }\n  ],\n  "seniority": [ { "label": "Moins de 2 ans", "percent": 18 } ],\n  "activities": { "agriculteurs": 1, "artisans": 6, "cadres": 14, "intermediaires": 21, "employes": 28, "ouvriers": 17, "retraites": 11, "sans_emploi": 2 }\n}'}
+        />
+      </ReportSection>
+
+      <ReportSection title="12. Répartition, tendance et tension du marché">
+        <p className="text-xs text-muted-foreground">Répartition logements/statut occupation, carte de tendance des prix, tensiomètre (pages « Marché immobilier », « Tendance du marché local », « Tension du marché » du PDF).</p>
+        <DraftJsonArea
+          label="Répartition du marché JSON"
+          value={draft.market_distribution_json}
+          onChange={(value) => set('market_distribution_json', value)}
+          rows={8}
+          placeholder={'{\n  "housing_maison": 62, "housing_appartement": 35, "housing_hlm": 3,\n  "occupancy_principales": 71, "occupancy_secondaires": 19, "occupancy_vacants": 10,\n  "rooms": [ { "label": "T3", "percent": 24 } ], "surfaces": [ { "label": "60-80 m²", "percent": 31 } ],\n  "bien_surface_range": "80-100 m²", "bien_rooms": 4\n}'}
+        />
+        <DraftJsonArea
+          label="Tendance du marché JSON"
+          value={draft.market_trend_json}
+          onChange={(value) => set('market_trend_json', value)}
+          rows={8}
+          placeholder={'{\n  "price_per_sqm_low": 2850, "price_per_sqm_median": 3420, "price_per_sqm_high": 4100,\n  "evolution_6m": 1.8, "evolution_1y": 3.6, "evolution_2y": 7.1,\n  "history": [ { "quarter": "T3 2025", "median_price": 3350, "high_price": 4050, "low_price": 2800, "change_percent": 1.2 } ]\n}'}
+        />
+        <DraftJsonArea
+          label="Tension du marché JSON"
+          value={draft.market_tension_json}
+          onChange={(value) => set('market_tension_json', value)}
+          rows={8}
+          placeholder={'{\n  "level": "dynamique", "label": "Marché dynamique", "description": "...",\n  "history": [ { "quarter": "T3 2025", "value": 62 } ],\n  "delay_fastest": 35, "delay_median": 68, "delay_slowest": 121,\n  "stock_indicator": "Stock en baisse", "price_revision": "Peu de révisions de prix"\n}'}
+        />
+      </ReportSection>
+
+      <ReportSection title="13. Biens en concurrence et invendus">
+        <p className="text-xs text-muted-foreground">Distinct des « Comparables vendus » (section 6) — biens encore en vente ou retirés sans être vendus (page « Comparables » du PDF).</p>
+        <DraftJsonArea
+          label="Biens en concurrence JSON"
+          value={draft.comparables_competing_json}
+          onChange={(value) => set('comparables_competing_json', value)}
+          rows={8}
+          placeholder={'[\n  { "id": "comp-1", "title": "Maison T5 avec jardin", "price": 315000, "price_per_sqm": 3150, "surface": 100, "land_surface": 450, "rooms": 5, "bedrooms": 3, "garage": 1, "year": 1998, "address": "...", "days_on_market": "45 jours", "status": "En vente", "energy_label": "D" }\n]'}
+        />
+        <DraftJsonArea
+          label="Biens invendus JSON"
+          value={draft.comparables_unsold_json}
+          onChange={(value) => set('comparables_unsold_json', value)}
+          rows={6}
+          placeholder={'[\n  { "id": "unsold-1", "title": "...", "price": 340000, "price_per_sqm": 3400, "surface": 100, "address": "...", "days_on_market": "210 jours", "status": "Invendu" }\n]'}
+        />
+      </ReportSection>
+
+      <ReportSection title="14. Positionnement étendu et synthèse des prix">
+        <p className="text-xs text-muted-foreground">Classement et seuils (page « Positionnement de votre bien ») + synthèse des 3 méthodes (page « Synthèse des prix » du PDF).</p>
+        <DraftJsonArea
+          label="Positionnement étendu JSON"
+          value={draft.positioning_extended_json}
+          onChange={(value) => set('positioning_extended_json', value)}
+          rows={6}
+          placeholder={'{\n  "price_per_sqm_rank": 8, "total_competitors": 22, "cheaper_and_larger_percent": 41,\n  "thresholds": { "low": 285000, "median": 320000, "high": 355000 },\n  "average_competitor_price_per_sqm": 3280\n}'}
+        />
+        <DraftJsonArea
+          label="Synthèse des prix JSON"
+          value={draft.synthesis_json}
+          onChange={(value) => set('synthesis_json', value)}
+          rows={6}
+          placeholder={'{\n  "market": { "low": 300000, "median": 325000, "high": 350000 },\n  "comparables": { "low": 295000, "median": 318000, "high": 340000 },\n  "ai": { "low": 305000, "median": 322000, "high": 345000 }\n}'}
+        />
+      </ReportSection>
+
+      <ReportSection title="15. Biens vendus par iad (portail client)">
+        <p className="text-xs text-muted-foreground">Alimente la section « Nos biens vendus » du portail client (distinct de la section 9, réservée à l'aperçu interne).</p>
+        <DraftJsonArea
+          label="Biens vendus par iad JSON"
+          value={draft.track_record_json}
+          onChange={(value) => set('track_record_json', value)}
+          rows={8}
+          placeholder={'[\n  { "id": "tr-1", "title": "Villa T5", "address": "...", "price": 340000, "price_per_sqm": 3200, "sold_date": "2026-05", "type": "Maison" }\n]'}
+        />
+      </ReportSection>
     </div>
   )
+}
+
+function PendingEstimationImportBanner({
+  pendingImport,
+  overwriteEditorial,
+  setOverwriteEditorial,
+  applying,
+  rejecting,
+  onApply,
+  onReject,
+}: {
+  pendingImport: PendingEstimationImport
+  overwriteEditorial: boolean
+  setOverwriteEditorial: (value: boolean) => void
+  applying: boolean
+  rejecting: boolean
+  onApply: () => void
+  onReject: () => void
+}) {
+  const detectedSections = detectImportSections(pendingImport.payload)
+  return (
+    <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4">
+      <div className="flex items-start gap-2">
+        <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">Import d’estimation en attente</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Source : {pendingImport.source} · reçu {formatDateTime(pendingImport.created_at)}
+            {pendingImport.confidence != null ? ` · confiance ${Math.round(pendingImport.confidence * 100)}%` : ''}
+          </p>
+          {pendingImport.summary ? <p className="mt-2 text-sm">{pendingImport.summary}</p> : null}
+          <p className="mt-2 text-xs text-muted-foreground">
+            {formatPrice(pendingImport.price_low)} – {formatPrice(pendingImport.price_high)}
+            {pendingImport.price_m2 ? ` · ${formatNumber(pendingImport.price_m2, ' €/m²')}` : ''}
+          </p>
+          {detectedSections.length > 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">Sections détectées : {detectedSections.join(' · ')}</p>
+          ) : null}
+          <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <Checkbox checked={overwriteEditorial} onCheckedChange={(checked) => setOverwriteEditorial(checked === true)} />
+            Écraser aussi la présentation, les points forts/à défendre et la conclusion déjà rédigés
+          </label>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" onClick={onApply} disabled={applying || rejecting}>
+              {applying ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <CheckCircle2 className="mr-1 size-3.5" />}
+              Appliquer l’import
+            </Button>
+            <Button size="sm" variant="outline" onClick={onReject} disabled={applying || rejecting}>
+              {rejecting ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <XCircle className="mr-1 size-3.5" />}
+              Rejeter
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function detectImportSections(payload: Record<string, unknown>) {
+  const labels: string[] = []
+  if (isNonEmptyObject(payload.socio_economic)) labels.push('contexte socio-éco')
+  const market = isRecord(payload.market) ? payload.market : {}
+  if (isNonEmptyObject(market.distribution)) labels.push('répartition marché')
+  if (isNonEmptyObject(market.trend)) labels.push('tendance')
+  if (isNonEmptyObject(market.tension)) labels.push('tension')
+  const comparables = isRecord(payload.comparables) ? payload.comparables : {}
+  if (Array.isArray(comparables.competing) && comparables.competing.length > 0) labels.push(`${comparables.competing.length} en concurrence`)
+  if (Array.isArray(comparables.unsold) && comparables.unsold.length > 0) labels.push(`${comparables.unsold.length} invendus`)
+  if (isNonEmptyObject(payload.positioning)) labels.push('positionnement')
+  if (isNonEmptyObject(payload.synthesis)) labels.push('synthèse 3 méthodes')
+  if (Array.isArray(payload.track_record) && payload.track_record.length > 0) labels.push(`${payload.track_record.length} biens vendus iad`)
+  return labels
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isNonEmptyObject(value: unknown) {
+  return isRecord(value) && Object.keys(value).length > 0
 }
 
 function ReportSection({ title, children }: { title: string; children: React.ReactNode }) {

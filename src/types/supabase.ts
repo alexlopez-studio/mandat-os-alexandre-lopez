@@ -1102,6 +1102,102 @@ export type Database = {
           },
         ]
       }
+      estimation_imports: {
+        Row: {
+          id: string
+          opportunity_id: string | null
+          kind: string
+          source: string
+          contact_name: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          property_address: string | null
+          property_city: string | null
+          property_type: string | null
+          property_surface: number | null
+          price_low: number | null
+          price_high: number | null
+          price_m2: number | null
+          confidence: number | null
+          summary: string | null
+          payload: Json
+          raw_filename: string | null
+          raw_format: string | null
+          status: string
+          applied_at: string | null
+          applied_by: string | null
+          reviewed_note: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          opportunity_id?: string | null
+          kind: string
+          source?: string
+          contact_name?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          property_address?: string | null
+          property_city?: string | null
+          property_type?: string | null
+          property_surface?: number | null
+          price_low?: number | null
+          price_high?: number | null
+          price_m2?: number | null
+          confidence?: number | null
+          summary?: string | null
+          payload: Json
+          raw_filename?: string | null
+          raw_format?: string | null
+          status?: string
+          applied_at?: string | null
+          applied_by?: string | null
+          reviewed_note?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          opportunity_id?: string | null
+          kind?: string
+          source?: string
+          contact_name?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          property_address?: string | null
+          property_city?: string | null
+          property_type?: string | null
+          property_surface?: number | null
+          price_low?: number | null
+          price_high?: number | null
+          price_m2?: number | null
+          confidence?: number | null
+          summary?: string | null
+          payload?: Json
+          raw_filename?: string | null
+          raw_format?: string | null
+          status?: string
+          applied_at?: string | null
+          applied_by?: string | null
+          reviewed_note?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'estimation_imports_opportunity_id_fkey'
+            columns: ['opportunity_id']
+            isOneToOne: false
+            referencedRelation: 'opportunities'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'estimation_imports_applied_by_fkey'
+            columns: ['applied_by']
+            isOneToOne: false
+            referencedRelation: 'admin_users'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       opportunity_events: {
         Row: {
           id: string
@@ -1634,12 +1730,257 @@ export type Database = {
           },
         ]
       }
+      dvf_communes: {
+        Row: {
+          id: string
+          insee_code: string
+          name: string
+          zipcode: string | null
+          department_code: string | null
+          active: boolean
+          last_imported_at: string | null
+          last_import_year: number | null
+          last_import_status: string | null
+          last_import_error: string | null
+          housing_stock_houses: number | null
+          housing_stock_flats: number | null
+          price_m2_floor: number | null
+          price_m2_ceiling: number | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          insee_code: string
+          name: string
+          zipcode?: string | null
+          department_code?: string | null
+          active?: boolean
+          last_imported_at?: string | null
+          last_import_year?: number | null
+          last_import_status?: string | null
+          last_import_error?: string | null
+          housing_stock_houses?: number | null
+          housing_stock_flats?: number | null
+          price_m2_floor?: number | null
+          price_m2_ceiling?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          insee_code?: string
+          name?: string
+          zipcode?: string | null
+          department_code?: string | null
+          active?: boolean
+          last_imported_at?: string | null
+          last_import_year?: number | null
+          last_import_status?: string | null
+          last_import_error?: string | null
+          housing_stock_houses?: number | null
+          housing_stock_flats?: number | null
+          price_m2_floor?: number | null
+          price_m2_ceiling?: number | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      dvf_transactions: {
+        Row: {
+          id: string
+          source_row_id: string
+          mutation_id: string
+          disposition_number: number | null
+          mutation_date: string | null
+          mutation_year: number | null
+          nature_mutation: string | null
+          value: number | null
+          address_number: string | null
+          address_suffix: string | null
+          street_name: string | null
+          postal_code: string | null
+          insee_code: string
+          city_name: string | null
+          department_code: string | null
+          parcel_id: string | null
+          lot_count: number | null
+          local_type_code: string | null
+          local_type: string | null
+          built_surface: number | null
+          rooms: number | null
+          land_nature: string | null
+          land_surface: number | null
+          longitude: number | null
+          latitude: number | null
+          price_per_m2: number | null
+          source_file_year: number
+          raw_json: Json
+          imported_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          source_row_id: string
+          mutation_id: string
+          disposition_number?: number | null
+          mutation_date?: string | null
+          mutation_year?: number | null
+          nature_mutation?: string | null
+          value?: number | null
+          address_number?: string | null
+          address_suffix?: string | null
+          street_name?: string | null
+          postal_code?: string | null
+          insee_code: string
+          city_name?: string | null
+          department_code?: string | null
+          parcel_id?: string | null
+          lot_count?: number | null
+          local_type_code?: string | null
+          local_type?: string | null
+          built_surface?: number | null
+          rooms?: number | null
+          land_nature?: string | null
+          land_surface?: number | null
+          longitude?: number | null
+          latitude?: number | null
+          price_per_m2?: number | null
+          source_file_year: number
+          raw_json?: Json
+          imported_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          source_row_id?: string
+          mutation_id?: string
+          disposition_number?: number | null
+          mutation_date?: string | null
+          mutation_year?: number | null
+          nature_mutation?: string | null
+          value?: number | null
+          address_number?: string | null
+          address_suffix?: string | null
+          street_name?: string | null
+          postal_code?: string | null
+          insee_code?: string
+          city_name?: string | null
+          department_code?: string | null
+          parcel_id?: string | null
+          lot_count?: number | null
+          local_type_code?: string | null
+          local_type?: string | null
+          built_surface?: number | null
+          rooms?: number | null
+          land_nature?: string | null
+          land_surface?: number | null
+          longitude?: number | null
+          latitude?: number | null
+          price_per_m2?: number | null
+          source_file_year?: number
+          raw_json?: Json
+          imported_at?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      dvf_import_runs: {
+        Row: {
+          id: string
+          insee_code: string
+          commune_name: string | null
+          department_code: string | null
+          source_file_year: number
+          source_url: string
+          status: string
+          scanned_rows: number
+          imported_rows: number
+          skipped_rows: number
+          error: string | null
+          started_at: string
+          finished_at: string | null
+        }
+        Insert: {
+          id?: string
+          insee_code: string
+          commune_name?: string | null
+          department_code?: string | null
+          source_file_year: number
+          source_url: string
+          status?: string
+          scanned_rows?: number
+          imported_rows?: number
+          skipped_rows?: number
+          error?: string | null
+          started_at?: string
+          finished_at?: string | null
+        }
+        Update: {
+          id?: string
+          insee_code?: string
+          commune_name?: string | null
+          department_code?: string | null
+          source_file_year?: number
+          source_url?: string
+          status?: string
+          scanned_rows?: number
+          imported_rows?: number
+          skipped_rows?: number
+          error?: string | null
+          started_at?: string
+          finished_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      dvf_serie_annuelle: {
+        Args: { p_insee: string; p_type?: string; p_years?: number }
+        Returns: Array<{
+          annee: number
+          ventes: number
+          prix_median: number | null
+          m2_median: number | null
+        }>
+      }
+      dvf_comparables: {
+        Args: {
+          p_insee: string
+          p_surface: number
+          p_type?: string
+          p_tolerance?: number
+          p_min_terrain?: number
+          p_max_terrain?: number
+          p_since?: string
+          p_limit?: number
+        }
+        Returns: Array<{
+          mutation_id: string
+          mutation_date: string | null
+          adresse: string | null
+          surface: number
+          pieces: number | null
+          terrain: number | null
+          prix: number
+          prix_m2: number
+          lat: number | null
+          lon: number | null
+        }>
+      }
+      dvf_distribution_m2: {
+        Args: { p_insee: string; p_type?: string; p_since?: string }
+        Returns: Array<{
+          prix_m2: number
+          mutation_date: string | null
+          surface: number | null
+          terrain: number | null
+        }>
+      }
     }
     Enums: {
       lead_tool: LeadTool
