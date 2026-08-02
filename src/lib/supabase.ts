@@ -27,7 +27,19 @@ function makeClient(preferServiceRole: boolean): SupabaseClient<Database> {
 		)
 	}
 
-	const key = preferServiceRole ? (service ?? anon) : anon
+	// Pas de repli sur la cle anonyme pour le client admin. Un tel repli est
+	// silencieux : les routes continueraient de s'executer, mais sous le role
+	// `anon`, qui ne contourne pas RLS. La quasi-totalite du schema ayant RLS
+	// active sans policy, elles renverraient des resultats vides sans lever la
+	// moindre erreur — panne bien plus difficile a diagnostiquer qu'un demarrage
+	// qui echoue franchement.
+	if (preferServiceRole && !service) {
+		throw new Error(
+			'[supabase] SUPABASE_SERVICE_ROLE_KEY is not set. Les routes serveur en ont besoin pour contourner RLS ; sans elle, elles retourneraient des resultats vides sans erreur.',
+		)
+	}
+
+	const key = preferServiceRole ? service : anon
 	if (!key) {
 		throw new Error(
 			'[supabase] Missing Supabase key. Set NEXT_PUBLIC_SUPABASE_ANON_KEY (and SUPABASE_SERVICE_ROLE_KEY for admin routes).',
