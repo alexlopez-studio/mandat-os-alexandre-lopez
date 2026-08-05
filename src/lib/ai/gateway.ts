@@ -19,6 +19,15 @@ export async function aiChat(input: {
   messages: AiChatMessage[]
   providerId?: AiProviderId | null
   model?: string | null
+  /**
+   * Force une reponse JSON.
+   *
+   * DeepSeek et les fournisseurs compatibles OpenAI n'exposent que le mode
+   * `json_object` : il garantit un JSON syntaxiquement valide, jamais qu'il
+   * respecte un schema. L'appelant doit donc valider la sortie (zod) et
+   * gerer le cas documente ou le contenu revient vide.
+   */
+  json?: boolean
 }): Promise<AiGatewayResult> {
   const credential = await getActiveAiCredential(input.providerId ?? null)
   if (!credential) {
@@ -40,6 +49,7 @@ export async function aiChat(input: {
       model,
       messages: input.messages,
       providerId: credential.providerId,
+      json: input.json === true,
     })
   }
 
@@ -80,6 +90,7 @@ async function callOpenAiCompatible(input: {
   model: string
   messages: AiChatMessage[]
   providerId: AiProviderId
+  json?: boolean
 }): Promise<AiGatewayResult> {
   const res = await fetch(`${input.baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
@@ -93,6 +104,8 @@ async function callOpenAiCompatible(input: {
       model: input.model,
       messages: input.messages,
       temperature: 0.25,
+      // DeepSeek tronque le JSON si max_tokens est laisse au defaut bas.
+      ...(input.json ? { response_format: { type: 'json_object' }, max_tokens: 2000 } : {}),
     }),
   })
 
