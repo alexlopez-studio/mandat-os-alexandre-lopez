@@ -39,13 +39,21 @@ export type OpportunityCandidate = {
   stage: string
 }
 
-/** Dossiers proposables au modele pour rattacher une note. */
+/**
+ * Dossiers proposables au modele pour rattacher une note.
+ *
+ * Plafonne a 40 : le palier gratuit de Groq limite a 6 000 tokens/minute, et
+ * une liste de 120 dossiers suffisait a saturer ce quota des la deuxieme note
+ * dictee d'affilee. 40 dossiers recents couvrent le pipeline actif.
+ */
+const CANDIDATE_LIMIT = 40
+
 export async function listOpportunityCandidates(): Promise<OpportunityCandidate[]> {
   const { data, error } = await adminDb()
     .from('opportunities')
     .select('id, title, seller_name, property_city, stage')
     .order('updated_at', { ascending: false })
-    .limit(120)
+    .limit(CANDIDATE_LIMIT)
 
   if (error) throw new Error(error.message)
   return (data ?? []) as OpportunityCandidate[]
