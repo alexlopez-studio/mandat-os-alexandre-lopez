@@ -720,7 +720,9 @@ export default function LeadDetailPage() {
                         ) : (
                             <div className="space-y-3">
                                 {sortedEvents.map((event) => {
-                                    const text = textValue(event.payload?.text)
+                                    // `content` est la clé utilisée par l'agent conversationnel :
+                                    // sans ce repli, ses notes s'affichaient vides.
+                                    const text = textValue(event.payload?.text) || textValue(event.payload?.content)
                                     const status = textValue(event.payload?.status)
                                     return (
                                         <div key={event.id} className="rounded-lg border bg-muted/20 p-3">

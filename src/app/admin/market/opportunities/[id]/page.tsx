@@ -2227,6 +2227,20 @@ function PropertyThumbnail({ title, url }: { title?: string | null; url?: string
   )
 }
 
+/**
+ * Auteur d'un événement, en clair.
+ *
+ * `created_by` porte le canal de saisie (`telegram`, `admin`…), utile pour
+ * l'audit mais pas dans une fiche : ce qui compte est de distinguer ce
+ * qu'Alexandre a écrit de ce que l'assistant a produit.
+ */
+function authorLabel(createdBy: string | null) {
+  if (!createdBy) return null
+  if (createdBy === 'admin' || createdBy === 'telegram') return 'Alexandre'
+  if (createdBy.startsWith('assistant')) return 'Assistant IA'
+  return createdBy
+}
+
 function ActivityRow({ event, action }: { event: OpportunityEvent; action?: React.ReactNode }) {
   const config = EVENT_CONFIG[event.type]
   const Icon = config.icon
@@ -2243,7 +2257,7 @@ function ActivityRow({ event, action }: { event: OpportunityEvent; action?: Reac
           {event.content && <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{event.content}</p>}
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1"><Clock className="size-3" /> {formatDateTime(eventDate(event))}</span>
-            {event.created_by && <span>{event.created_by}</span>}
+            {authorLabel(event.created_by) && <span>{authorLabel(event.created_by)}</span>}
             {event.completed_at && <span>Terminée le {formatDateTime(event.completed_at)}</span>}
           </div>
         </div>
