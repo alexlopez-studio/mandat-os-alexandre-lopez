@@ -3251,3 +3251,59 @@ Deployment: Work, declenche un deployment Vercel pour la branche preview.
 ---
 Derniere mise a jour: 10/07/2026
 Maintenu par: Codex (sur `preview`)
+
+---
+
+## 07/08/2026 — Cadrage du modèle Contact / Projet
+
+### Contexte
+
+Réflexion d'Alexandre sur la cohérence des processus : l'app mélange vendeurs
+et acquéreurs dans « Opportunités / Mandats », avec une base contacts à côté.
+Vérification faite sur les données réelles du projet preview.
+
+### Constat
+
+- **La personne n'est pas une entité.** Quatre représentations selon la porte
+  d'entrée : `prospects`, `opportunities.seller_name` (simple chaîne),
+  `warm_contacts`, `client_profiles`. Sur 5 opportunités, **3 sans contact
+  rattaché**.
+- **Le projet est coupé en deux tables** : `opportunities` (vente) et
+  `buyer_criteria` (achat), pour un concept identique.
+- **Les activités sont coupées en deux** : `opportunity_events` et
+  `lead_events`. Symptôme déjà rencontré le jour même — les notes Telegram sur
+  un acquéreur s'affichaient vides.
+- « Mandat » est traité comme un objet alors que c'est une étape.
+
+### Décision
+
+Modèle cible à trois objets : Contact, Projet (vente | achat), Activité, reliés
+par une table de liaison portant un rôle. Découpage en 7 lots dans
+`docs/MODELE_CONTACT_PROJET_LOTS.md`.
+
+Le Lot 4 (fusion des deux pipelines) est identifié comme **point de
+non-retour** : décision explicite requise après le Lot 3.
+
+Moment favorable : environ 30 lignes de données réelles au total. Le coût de
+cette migration ne sera jamais plus bas.
+
+### À faire
+
+- Valider la maquette produite depuis
+  `docs/MODELE_CONTACT_PROJET_PROMPT_MAQUETTE.md` (Google AI Studio).
+- Arbitrer le vocabulaire : « projet » ou « mandat » côté client.
+- Confirmer la fréquence des co-vendeurs.
+- Go / no-go avant le Lot 1.
+
+### Autres corrections du jour
+
+- Agent Telegram : parseur de dates unique, outil `modifier_tache`, refus
+  serveur des tâches en doublon, date du jour injectée dans le prompt.
+- Mémoire de conversation : l'historique était trié du plus ancien au plus
+  récent avant troncature — l'agent ne recevait plus le dernier message.
+- Affichage : retrait du canal de saisie (« Telegram ») des fiches.
+- `npm run lint` supprime `.next` : casse tout serveur de dev en cours.
+  Arbitrage en attente.
+
+---
+Dernière mise à jour : 07/08/2026
