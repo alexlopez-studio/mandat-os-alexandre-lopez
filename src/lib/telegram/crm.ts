@@ -314,7 +314,9 @@ export async function addNoteOrTask(input: {
       .insert({
         opportunity_id: dossier.id,
         type: input.isTask ? 'task' : 'note',
-        title: input.isTask ? 'Tâche (Telegram)' : 'Note (Telegram)',
+        // Le canal de saisie n'intéresse personne dans la fiche : il reste
+        // tracé dans `metadata.source` et `created_by`, pas dans le titre.
+        title: input.isTask ? 'Tâche' : 'Note',
         content: input.content,
         due_at: dueDate ? `${dueDate}T09:00:00Z` : null,
         metadata: { source: 'telegram' },
