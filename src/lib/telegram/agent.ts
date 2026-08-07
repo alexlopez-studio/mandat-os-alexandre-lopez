@@ -15,6 +15,21 @@ import { executeTool, TOOL_DEFINITIONS } from '@/lib/telegram/tools'
 /** Garde-fou : au-delà, on rend la main plutôt que de boucler indéfiniment. */
 const MAX_STEPS = 6
 
+/**
+ * Le prompt dépend du jour : sans la date d'aujourd'hui, le modèle ne peut pas
+ * convertir « lundi prochain » et transmet la formulation brute en échéance.
+ */
+function buildSystemPrompt(today: Date) {
+  const jour = new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Paris',
+  }).format(today)
+  const iso = today.toISOString().slice(0, 10)
+
+  return `Nous sommes le ${jour} (${iso}).
+
+${SYSTEM_PROMPT}`
+}
+
 const SYSTEM_PROMPT = `Tu es l'assistant CRM d'Alexandre Lopez, conseiller immobilier iad en Provence Verte (Brignoles, Saint-Maximin, Rocbaron, Nans-les-Pins…).
 
 Il t'écrit entre deux rendez-vous, souvent en style télégraphique. Ton rôle est d'enregistrer proprement ce qu'il te dit dans son CRM — et de lui poser une question quand c'est nécessaire pour bien faire.
@@ -35,7 +50,13 @@ QUAND AGIR SANS DEMANDER :
 - Le dossier est identifié sans ambiguïté et l'information est claire. Tu écris, tu confirmes.
 Alexandre dispose de /recap et /annuler : une écriture n'est jamais définitive. Ne demande pas de confirmation pour le principe.
 
+TÂCHES ET ÉCHÉANCES :
+- « ajoute une date », « reporte », « décale », « c'est fait » portent sur une tâche qui existe déjà : appelle lire_dossier pour récupérer son identifiant, puis modifier_tache. Ce n'est jamais une création.
+- N'appelle ajouter_tache que pour une chose à faire réellement nouvelle.
+- Convertis toi-même les dates en AAAA-MM-JJ à partir de la date du jour indiquée plus haut. Ne transmets jamais « lundi prochain » tel quel.
+
 RÈGLES :
+- Ne confirme jamais une écriture qu'un outil n'a pas confirmée. Si un outil renvoie une erreur, dis ce qui a échoué et pourquoi — n'annonce pas que c'est enregistré.
 - Les civilités ne comptent pas : « Monsieur Martin » et « Martin » désignent la même personne.
 - Les montants sont en euros. « 250 » dans un contexte immobilier signifie 250 000.
 - Vendeur = quelqu'un qui vend. Acquéreur = quelqu'un qui cherche à acheter.
@@ -53,7 +74,10 @@ export async function runAgent(input: { chatId: number; text: string }): Promise
   await appendUser(threadId, input.text)
 
   const history = await loadHistory(threadId)
-  const messages: AiConversationMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...history]
+  const messages: AiConversationMessage[] = [
+    { role: 'system', content: buildSystemPrompt(new Date()) },
+    ...history,
+  ]
   const operations: AppliedOperation[] = []
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
