@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/ai/db'
+import { formatFrenchDate, parseFrenchDate } from '@/lib/telegram/dates'
 
 /**
  * Accès CRM pour l'agent Telegram : recherche, lecture, écriture.
@@ -132,7 +133,9 @@ export async function readDossierDetail(id: string): Promise<Record<string, unkn
 
     const { data: events } = await adminDb()
       .from('opportunity_events')
-      .select('type, content, due_at, occurred_at')
+      // L'identifiant est indispensable : sans lui, l'agent ne peut désigner
+      // une tâche existante et n'a d'autre choix que d'en créer une seconde.
+      .select('id, type, content, due_at, completed_at, occurred_at')
       .eq('opportunity_id', id)
       .order('occurred_at', { ascending: false })
       .limit(8)
@@ -149,7 +152,7 @@ export async function readDossierDetail(id: string): Promise<Record<string, unkn
   const { data: events } = dossier.leadId
     ? await adminDb()
         .from('lead_events')
-        .select('kind, payload, created_at')
+        .select('id, kind, payload, created_at')
         .eq('lead_id', dossier.leadId)
         .order('created_at', { ascending: false })
         .limit(8)
@@ -191,6 +194,103 @@ export function dossierLabel(dossier: Dossier) {
   return [dossier.name, dossier.city].filter(Boolean).join(' — ') + ` (${dossier.kind})`
 }
 
+// ── Rapprochement de libellés ─────────────────────────────────
+
+const STOP_WORDS = new Set(['le', 'la', 'les', 'de', 'des', 'du', 'un', 'une', 'au', 'aux', 'et', 'pour', 'avec', 'son', 'sa'])
+
+/**
+ * Racine approximative : on tronque à 5 caractères pour rapprocher les formes
+ * fléchies du français (« envoyer » / « envoi », « relancer » / « relance »).
+ * En cas de doute la troncature regroupe trop, ce qui bloque une création au
+ * profit d'une mise à jour — le sens dans lequel une erreur est rattrapable.
+ */
+function stems(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .split(' ')
+        .filter((token) => token.length > 2 && !STOP_WORDS.has(token))
+        .map((token) => token.slice(0, 5)),
+    ),
+  )
+}
+
+/** Deux intitulés désignent-ils la même chose à faire ? */
+export function isSimilarContent(a: string, b: string) {
+  const left = stems(a)
+  const right = stems(b)
+  if (left.length === 0 || right.length === 0) return false
+
+  const shared = left.filter((token) => right.includes(token)).length
+  return shared / Math.min(left.length, right.length) >= 0.6
+}
+
+export type OpenTask = { id: string; content: string; dueDate: string | null }
+
+/**
+ * Tâche ouverte au libellé équivalent sur le même dossier.
+ *
+ * C'est le garde-fou anti-doublon : il vit ici, dans le code, et non dans le
+ * prompt. Un modèle qui ignore la consigne se heurte quand même à un refus.
+ */
+export async function findSimilarOpenTask(dossier: Dossier, content: string): Promise<OpenTask | null> {
+  if (dossier.kind === 'vendeur') {
+    const { data } = await adminDb()
+      .from('opportunity_events')
+      .select('id, content, due_at')
+      .eq('opportunity_id', dossier.id)
+      .eq('type', 'task')
+      .is('completed_at', null)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    const match = (data ?? []).find((row: Record<string, string | null>) =>
+      isSimilarContent(content, row.content ?? ''))
+
+    return match ? { id: match.id as string, content: match.content ?? '', dueDate: match.due_at ?? null } : null
+  }
+
+  if (!dossier.leadId) return null
+
+  const { data } = await adminDb()
+    .from('lead_events')
+    .select('id, payload')
+    .eq('lead_id', dossier.leadId)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
+  const match = (data ?? []).find((row: Record<string, any>) => {
+    const payload = row.payload ?? {}
+    return payload.type === 'task' && !payload.done && isSimilarContent(content, String(payload.content ?? ''))
+  })
+
+  if (!match) return null
+  return {
+    id: match.id as string,
+    content: String(match.payload?.content ?? ''),
+    dueDate: (match.payload?.due_date as string) ?? null,
+  }
+}
+
+/**
+ * Convertit l'échéance dictée en date ISO, ou échoue franchement.
+ *
+ * Avant, la valeur brute était concaténée à `T09:00:00Z` puis envoyée à
+ * Postgres : « lundi prochain » produisait `lundi prochainT09:00:00Z`, une
+ * erreur SQL au milieu de l'insertion. Rien ne descend plus sans passer ici.
+ */
+function resolveDueDate(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null
+
+  const parsed = parseFrenchDate(value, new Date())
+  if (!parsed.ok) throw new Error(parsed.error)
+  return parsed.iso
+}
+
 // ── Écritures ─────────────────────────────────────────────────
 
 export async function addNoteOrTask(input: {
@@ -204,7 +304,8 @@ export async function addNoteOrTask(input: {
   const dossier = await getDossier(input.dossierId)
   if (!dossier) throw new Error('Dossier introuvable')
 
-  const suffix = input.dueDate ? ` — échéance ${input.dueDate}` : ''
+  const dueDate = input.isTask ? resolveDueDate(input.dueDate) : null
+  const suffix = dueDate ? ` — échéance ${formatFrenchDate(dueDate)}` : ''
   const summary = `${input.isTask ? 'Tâche' : 'Note'} — ${dossierLabel(dossier)}${suffix}`
 
   if (dossier.kind === 'vendeur') {
@@ -215,7 +316,7 @@ export async function addNoteOrTask(input: {
         type: input.isTask ? 'task' : 'note',
         title: input.isTask ? 'Tâche (Telegram)' : 'Note (Telegram)',
         content: input.content,
-        due_at: input.dueDate ? `${input.dueDate}T09:00:00Z` : null,
+        due_at: dueDate ? `${dueDate}T09:00:00Z` : null,
         metadata: { source: 'telegram' },
         created_by: 'telegram',
       })
@@ -245,7 +346,7 @@ export async function addNoteOrTask(input: {
         source: 'telegram',
         type: input.isTask ? 'task' : 'note',
         content: input.content,
-        due_date: input.dueDate ?? null,
+        due_date: dueDate,
       },
       created_by: 'telegram',
     })
@@ -264,7 +365,7 @@ export async function addNoteOrTask(input: {
 
     const { error: updateError } = await adminDb()
       .from('buyer_criteria')
-      .update({ next_action: input.content, due_date: input.dueDate ?? null })
+      .update({ next_action: input.content, due_date: dueDate })
       .eq('id', dossier.id)
 
     if (!updateError) {
@@ -443,4 +544,75 @@ export async function undoOperation(chatId: number, ref?: number): Promise<strin
   if (updateError) throw new Error(updateError.message)
 
   return operation.summary as string
+}
+
+/**
+ * Modifie une tâche existante : échéance, libellé, ou marquage « faite ».
+ *
+ * C'est la brique qui manquait. Sans elle, « ajoute une date à la tâche » n'a
+ * qu'une issue possible pour le modèle — créer une seconde tâche.
+ */
+export async function updateTask(input: {
+  chatId: number
+  sourceText: string
+  taskId: string
+  content?: string | null
+  dueDate?: string | null
+  done?: boolean
+}): Promise<AppliedOperation> {
+  const dueDate = input.dueDate === undefined ? undefined : resolveDueDate(input.dueDate)
+  const content = input.content?.trim() || undefined
+
+  if (dueDate === undefined && content === undefined && input.done === undefined) {
+    throw new Error('Rien à modifier : précise une échéance, un libellé ou le marquage « faite ».')
+  }
+
+  const { data: before } = await adminDb()
+    .from('opportunity_events')
+    .select('id, opportunity_id, content, due_at, completed_at')
+    .eq('id', input.taskId)
+    .eq('type', 'task')
+    .maybeSingle()
+
+  if (!before) {
+    throw new Error(
+      "Tâche introuvable. Récupère son identifiant via lire_dossier avant de la modifier — n'en crée pas une nouvelle.",
+    )
+  }
+
+  const patch: Record<string, unknown> = {}
+  if (dueDate !== undefined) patch.due_at = dueDate ? `${dueDate}T09:00:00Z` : null
+  if (content !== undefined) patch.content = content
+  if (input.done !== undefined) patch.completed_at = input.done ? new Date().toISOString() : null
+
+  const { error } = await adminDb().from('opportunity_events').update(patch).eq('id', input.taskId)
+  if (error) throw new Error(error.message)
+
+  const dossier = await getDossier(before.opportunity_id as string)
+  const parts = [
+    content !== undefined ? `libellé « ${content} »` : null,
+    dueDate !== undefined ? (dueDate ? `échéance ${formatFrenchDate(dueDate)}` : 'échéance retirée') : null,
+    input.done !== undefined ? (input.done ? 'marquée faite' : 'rouverte') : null,
+  ].filter(Boolean)
+
+  return record({
+    chatId: input.chatId,
+    intent: 'task_update',
+    summary: `Tâche mise à jour — ${dossier ? dossierLabel(dossier) : 'dossier'} : ${parts.join(', ')}`,
+    sourceText: input.sourceText,
+    targetTable: 'opportunity_events',
+    targetId: input.taskId,
+    steps: [
+      {
+        type: 'restore',
+        table: 'opportunity_events',
+        id: input.taskId,
+        values: {
+          content: before.content ?? null,
+          due_at: before.due_at ?? null,
+          completed_at: before.completed_at ?? null,
+        },
+      },
+    ],
+  })
 }

@@ -4,8 +4,11 @@ import {
   createBuyer,
   createSeller,
   dossierLabel,
+  findSimilarOpenTask,
+  getDossier,
   readDossierDetail,
   searchDossiers,
+  updateTask,
   type AppliedOperation,
 } from '@/lib/telegram/crm'
 
@@ -99,15 +102,35 @@ export const TOOL_DEFINITIONS: AiToolDefinition[] = [
   },
   {
     name: 'ajouter_tache',
-    description: "Enregistre une chose à faire sur un dossier existant, avec une échéance si elle est exprimée.",
+    description:
+      "Crée une NOUVELLE chose à faire sur un dossier existant. À n'utiliser que si la tâche n'existe pas déjà : si une tâche ouverte équivalente est trouvée, l'outil refuse et renvoie son identifiant pour que tu la modifies à la place.",
     parameters: {
       type: 'object',
       properties: {
         dossier_id: { type: 'string' },
         contenu: { type: 'string', description: "L'action à mener, à l'infinitif." },
-        echeance: { type: 'string', description: 'Date AAAA-MM-JJ, ou omise si aucune échéance.' },
+        echeance: {
+          type: 'string',
+          description: "Date d'échéance. Le format AAAA-MM-JJ est préféré, mais « 10/08/2026 », « 10 août 2026 », « demain » ou « lundi prochain » sont acceptés. Omise si aucune échéance n'est exprimée.",
+        },
       },
       required: ['dossier_id', 'contenu'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'modifier_tache',
+    description:
+      "Modifie une tâche qui EXISTE DÉJÀ : pose ou déplace son échéance, corrige son libellé, ou la marque comme faite. C'est l'outil à utiliser quand Alexandre dit « ajoute une date », « reporte », « décale », « c'est fait ». Il ne crée jamais rien. L'identifiant s'obtient via lire_dossier.",
+    parameters: {
+      type: 'object',
+      properties: {
+        tache_id: { type: 'string', description: 'Identifiant de la tâche, renvoyé par lire_dossier.' },
+        echeance: { type: 'string', description: "Nouvelle échéance. Mêmes formats qu'ajouter_tache." },
+        contenu: { type: 'string', description: 'Nouveau libellé, si le précédent était imprécis.' },
+        faite: { type: 'boolean', description: 'true pour marquer la tâche comme faite.' },
+      },
+      required: ['tache_id'],
       additionalProperties: false,
     },
   },
@@ -185,12 +208,45 @@ export async function executeTool(name: string, rawArgs: string, ctx: ToolContex
       case 'ajouter_note':
       case 'ajouter_tache': {
         const isTask = name === 'ajouter_tache'
+        const dossierId = String(args.dossier_id ?? '')
+        const content = String(args.contenu ?? '').trim()
+
+        // Garde-fou anti-doublon. Il vit ici, dans le code : un modèle qui
+        // ignore la consigne du prompt se heurte quand même au refus, et
+        // repart avec l'identifiant de la tâche à modifier.
+        if (isTask) {
+          const dossier = await getDossier(dossierId)
+          if (!dossier) return { result: JSON.stringify({ erreur: 'Dossier introuvable' }) }
+
+          const existing = await findSimilarOpenTask(dossier, content)
+          if (existing) {
+            return {
+              result: JSON.stringify({
+                erreur: "Une tâche équivalente est déjà ouverte sur ce dossier : création refusée.",
+                tache_existante: { tache_id: existing.id, contenu: existing.content, echeance: existing.dueDate },
+                a_faire: "Appelle modifier_tache avec cette tache_id plutôt que d'en créer une seconde.",
+              }),
+            }
+          }
+        }
+
         const operation = await addNoteOrTask({
           ...ctx,
-          dossierId: String(args.dossier_id ?? ''),
-          content: String(args.contenu ?? '').trim(),
+          dossierId,
+          content,
           dueDate: isTask ? (args.echeance ?? null) : null,
           isTask,
+        })
+        return { result: JSON.stringify({ ok: true, reference: operation.ref, resume: operation.summary }), operation }
+      }
+
+      case 'modifier_tache': {
+        const operation = await updateTask({
+          ...ctx,
+          taskId: String(args.tache_id ?? ''),
+          content: args.contenu ?? undefined,
+          dueDate: args.echeance === undefined ? undefined : args.echeance,
+          done: typeof args.faite === 'boolean' ? args.faite : undefined,
         })
         return { result: JSON.stringify({ ok: true, reference: operation.ref, resume: operation.summary }), operation }
       }
