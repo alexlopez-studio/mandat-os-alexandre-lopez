@@ -46,20 +46,37 @@ describe('outils Telegram', () => {
     expect(TOOL_DEFINITIONS.map((tool) => tool.name)).toContain('modifier_tache')
   })
 
-  it('refuse une tâche en doublon et oriente vers modifier_tache', async () => {
+  it('date la tâche existante au lieu d’en créer une seconde', async () => {
+    mocks.similarTask = { id: 'task-1', content: 'envoyer le rapport d’estimation', dueDate: '2026-08-10' }
+
+    const { result } = await callTool('ajouter_tache', {
+      dossier_id: 'opp-1',
+      contenu: 'envoi du rapport d’estimation',
+      echeance: '2026-08-11',
+    })
+    const parsed = JSON.parse(result)
+
+    expect(parsed.ok).toBe(true)
+    expect(parsed.mise_a_jour).toBe(true)
+    expect(mocks.added).toHaveLength(0)
+    expect(mocks.updated).toEqual([
+      expect.objectContaining({ taskId: 'task-1', dueDate: '2026-08-11' }),
+    ])
+  })
+
+  it('signale simplement le doublon quand aucune échéance n’est donnée', async () => {
     mocks.similarTask = { id: 'task-1', content: 'envoyer le rapport d’estimation', dueDate: null }
 
     const { result } = await callTool('ajouter_tache', {
       dossier_id: 'opp-1',
       contenu: 'envoi du rapport d’estimation',
-      echeance: '2026-08-10',
     })
     const parsed = JSON.parse(result)
 
-    expect(parsed.erreur).toContain('création refusée')
+    expect(parsed.deja_present).toBe(true)
     expect(parsed.tache_existante.tache_id).toBe('task-1')
-    expect(parsed.a_faire).toContain('modifier_tache')
     expect(mocks.added).toHaveLength(0)
+    expect(mocks.updated).toHaveLength(0)
   })
 
   it('crée la tâche quand aucune équivalente n’existe', async () => {

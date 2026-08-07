@@ -12,8 +12,14 @@ import type { AiConversationMessage, AiToolCall } from '@/lib/ai/gateway'
 /** Au-delà de ce délai sans échange, on repart d'une conversation vierge. */
 const THREAD_IDLE_MINUTES = 120
 
-/** Nombre de messages rechargés — borne le coût de chaque tour. */
-const HISTORY_LIMIT = 24
+/**
+ * Nombre de messages rechargés — borne le coût de chaque tour.
+ *
+ * Un seul échange produit facilement 4 à 6 lignes (assistant, appels d'outils,
+ * résultats, réponse finale) : une fenêtre trop courte ne tient même pas trois
+ * demandes.
+ */
+const HISTORY_LIMIT = 40
 
 function ownerFor(chatId: number) {
   return `telegram:${chatId}`
@@ -54,17 +60,23 @@ export async function getOrCreateThread(chatId: number): Promise<string> {
 }
 
 export async function loadHistory(threadId: string): Promise<AiConversationMessage[]> {
+  // Tri décroissant puis remise à l'endroit : on veut les messages les plus
+  // RÉCENTS. Trié à l'endroit, la troncature gardait le début du fil et
+  // coupait le message qu'Alexandre vient d'envoyer — l'agent répondait alors
+  // à une demande vieille d'une heure.
   const { data, error } = await adminDb()
     .from('ai_messages')
     .select('role, content, metadata')
     .eq('thread_id', threadId)
-    .order('created_at', { ascending: true })
+    .order('created_at', { ascending: false })
     .limit(HISTORY_LIMIT)
 
   if (error) throw new Error(error.message)
 
+  const rows = ((data ?? []) as Array<Record<string, any>>).reverse()
+
   const messages: AiConversationMessage[] = []
-  for (const row of (data ?? []) as Array<Record<string, any>>) {
+  for (const row of rows) {
     if (row.role === 'user') {
       messages.push({ role: 'user', content: row.content })
     } else if (row.role === 'assistant') {
@@ -82,7 +94,17 @@ export async function loadHistory(threadId: string): Promise<AiConversationMessa
       })
     }
   }
-  return messages
+  return trimToCleanStart(messages)
+}
+
+/**
+ * La troncature peut tomber au milieu d'un échange d'outils. Un message `tool`
+ * dont l'appel a disparu fait rejeter toute la requête par le fournisseur : on
+ * repart donc du premier message d'Alexandre présent dans la fenêtre.
+ */
+function trimToCleanStart(messages: AiConversationMessage[]): AiConversationMessage[] {
+  const first = messages.findIndex((message) => message.role === 'user')
+  return first <= 0 ? messages : messages.slice(first)
 }
 
 export async function appendUser(threadId: string, content: string) {
