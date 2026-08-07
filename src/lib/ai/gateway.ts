@@ -85,7 +85,18 @@ export async function aiChatWithTools(input: {
   })
 
   const json = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(asProviderError(json, `Erreur ${credential.providerId}`))
+  if (!res.ok) {
+    // Une boucle d'agent consomme 4 à 6 appels par message : les quotas
+    // gratuits (6 000 tokens/minute chez Groq) sautent très vite. On le dit
+    // clairement plutôt que de remonter l'erreur brute du fournisseur.
+    if (res.status === 429) {
+      throw new Error(
+        "Quota du fournisseur IA atteint. L'agent consomme plusieurs appels par message : "
+          + 'un palier payant est nécessaire, ou attends une minute avant de réessayer.',
+      )
+    }
+    throw new Error(asProviderError(json, `Erreur ${credential.providerId}`))
+  }
 
   const message = json.choices?.[0]?.message ?? {}
   const rawCalls = Array.isArray(message.tool_calls) ? message.tool_calls : []
