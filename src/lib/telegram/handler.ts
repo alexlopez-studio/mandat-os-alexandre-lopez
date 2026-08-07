@@ -1,21 +1,13 @@
 import { adminDb } from '@/lib/ai/db'
+import { runAgent } from '@/lib/telegram/agent'
 import { escapeHtml, sendMessage, type TelegramConfig } from '@/lib/telegram/client'
-import {
-  candidateLabel,
-  extractIntent,
-  findByName,
-  listCandidates,
-  type Candidate,
-} from '@/lib/telegram/extraction'
-import { applyExtraction, listRecap, undoOperation } from '@/lib/telegram/journal'
-import { env } from '@/lib/env'
-
-const CONFIDENCE_FLOOR = 0.5
+import { listRecap, undoOperation } from '@/lib/telegram/crm'
+import { resetThread } from '@/lib/telegram/memory'
 
 const HELP = [
   '<b>Mandat OS — assistant</b>',
   '',
-  'Écris-moi simplement ce que tu veux retenir :',
+  'Écris-moi ce que tu veux retenir, je consulte ta base et je te pose une question si quelque chose est ambigu :',
   '· « les Dupont acceptent 285, ils sont pressés »',
   '· « rappelle-moi de relancer Martin jeudi »',
   '· « nouveau vendeur Bernard à Rocbaron, 06 12 34 56 78 »',
@@ -25,75 +17,21 @@ const HELP = [
   '/recap semaine — les 7 derniers jours',
   '/annuler — annule la dernière opération',
   "/annuler 47 — annule l'opération #47",
+  '/nouveau — repart d\'une conversation vierge',
 ].join('\n')
 
 export async function handleTextMessage(config: TelegramConfig, text: string) {
   const trimmed = text.trim()
   if (trimmed.startsWith('/')) return handleCommand(config, trimmed)
 
-  const candidates = await listCandidates()
-  const { extraction } = await extractIntent({ text: trimmed, candidates })
+  const { answer, operations } = await runAgent({ chatId: config.allowedChatId, text: trimmed })
 
-  if (extraction.intent === 'unknown') {
-    await sendMessage(config, "Je n'ai pas compris de quoi il s'agit. Reformule, ou tape /aide.")
-    return
-  }
+  // Les références des écritures sont ajoutées sous la réponse : elles sont
+  // ce qu'Alexandre réutilise pour /annuler.
+  const refs = operations.map((operation) => `✅ <b>#${operation.ref}</b> ${escapeHtml(operation.summary)}`)
+  const body = [escapeHtml(answer), ...(refs.length ? ['', ...refs] : [])].join('\n')
 
-  const isContact = extraction.intent === 'contact_seller' || extraction.intent === 'contact_buyer'
-
-  // Garde-fou anti-doublon : si le nom existe deja, on ne cree pas un second
-  // dossier — le modele n'a pas toujours reconnu la personne dans la liste.
-  if (isContact) {
-    const existing = findByName(candidates, extraction.contact?.name ?? extraction.target_name)
-    if (existing) {
-      await sendMessage(
-        config,
-        [
-          `⚠️ <b>${escapeHtml(candidateLabel(existing))}</b> existe déjà.`,
-          '',
-          "Je n'ai rien créé pour éviter un doublon.",
-          'Reformule en note si tu veux compléter sa fiche —',
-          `par exemple : « ${escapeHtml(existing.name)} a un budget de 250 000 ».`,
-        ].join('\n'),
-      )
-      return
-    }
-  }
-
-  const target = extraction.target_id
-    ? candidates.find((candidate) => candidate.id === extraction.target_id) ?? null
-    : null
-
-  if ((extraction.intent === 'note' || extraction.intent === 'task') && !target) {
-    const hint = extraction.target_name ? ` pour « ${escapeHtml(extraction.target_name)} »` : ''
-    await sendMessage(
-      config,
-      `Je n'ai pas trouvé de dossier${hint}.\nPrécise le nom et la ville, ou crée le contact d'abord.`,
-    )
-    return
-  }
-
-  if (target && extraction.confidence < CONFIDENCE_FLOOR) {
-    await sendMessage(
-      config,
-      `Je ne suis pas sûr du dossier (${escapeHtml(candidateLabel(target))}).\nRenvoie le message en précisant le nom complet et la ville.`,
-    )
-    return
-  }
-
-  const operation = await applyExtraction({
-    chatId: config.allowedChatId,
-    sourceText: trimmed,
-    extraction,
-    target,
-  })
-
-  await sendMessage(config, `✅ <b>#${operation.ref}</b> ${escapeHtml(operation.summary)}${linkFor(target)}`)
-}
-
-function linkFor(target: Candidate | null) {
-  if (!target || target.kind !== 'seller') return ''
-  return `\n${env.app.siteUrl}/admin/market/opportunities/${target.id}`
+  await sendMessage(config, body)
 }
 
 async function handleCommand(config: TelegramConfig, command: string) {
@@ -104,6 +42,11 @@ async function handleCommand(config: TelegramConfig, command: string) {
     case '/aide':
     case '/help':
       await sendMessage(config, HELP)
+      return
+
+    case '/nouveau':
+      await resetThread(config.allowedChatId)
+      await sendMessage(config, "C'est reparti de zéro. De quoi veux-tu me parler ?")
       return
 
     case '/recap': {
@@ -137,7 +80,7 @@ async function handleCommand(config: TelegramConfig, command: string) {
   }
 }
 
-/** Marque le message brut comme traite ou en echec. */
+/** Marque le message brut comme traité ou en échec. */
 export async function markMessage(updateId: number, status: 'processed' | 'failed', error?: string) {
   await adminDb()
     .from('telegram_messages')
