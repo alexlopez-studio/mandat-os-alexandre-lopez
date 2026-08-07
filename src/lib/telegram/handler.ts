@@ -1,6 +1,12 @@
 import { adminDb } from '@/lib/ai/db'
 import { escapeHtml, sendMessage, type TelegramConfig } from '@/lib/telegram/client'
-import { extractIntent, listOpportunityCandidates } from '@/lib/telegram/extraction'
+import {
+  candidateLabel,
+  extractIntent,
+  findByName,
+  listCandidates,
+  type Candidate,
+} from '@/lib/telegram/extraction'
 import { applyExtraction, listRecap, undoOperation } from '@/lib/telegram/journal'
 import { env } from '@/lib/env'
 
@@ -9,26 +15,23 @@ const CONFIDENCE_FLOOR = 0.5
 const HELP = [
   '<b>Mandat OS — assistant</b>',
   '',
-  'Ecris-moi simplement ce que tu veux retenir :',
-  '· « les Dupont acceptent 285, ils sont presses »',
+  'Écris-moi simplement ce que tu veux retenir :',
+  '· « les Dupont acceptent 285, ils sont pressés »',
   '· « rappelle-moi de relancer Martin jeudi »',
-  '· « nouveau vendeur Bernard a Rocbaron, 06 12 34 56 78 »',
+  '· « nouveau vendeur Bernard à Rocbaron, 06 12 34 56 78 »',
   '',
   '<b>Commandes</b>',
-  '/recap — ce que j\'ai enregistre aujourd\'hui',
+  "/recap — ce que j'ai enregistré aujourd'hui",
   '/recap semaine — les 7 derniers jours',
-  '/annuler — annule la derniere operation',
-  '/annuler 47 — annule l\'operation #47',
+  '/annuler — annule la dernière opération',
+  "/annuler 47 — annule l'opération #47",
 ].join('\n')
 
 export async function handleTextMessage(config: TelegramConfig, text: string) {
   const trimmed = text.trim()
+  if (trimmed.startsWith('/')) return handleCommand(config, trimmed)
 
-  if (trimmed.startsWith('/')) {
-    return handleCommand(config, trimmed)
-  }
-
-  const candidates = await listOpportunityCandidates()
+  const candidates = await listCandidates()
   const { extraction } = await extractIntent({ text: trimmed, candidates })
 
   if (extraction.intent === 'unknown') {
@@ -36,21 +39,44 @@ export async function handleTextMessage(config: TelegramConfig, text: string) {
     return
   }
 
-  // Une note sans dossier identifie serait rangee nulle part : on prefere demander.
-  if ((extraction.intent === 'note' || extraction.intent === 'task') && !extraction.target_id) {
+  const isContact = extraction.intent === 'contact_seller' || extraction.intent === 'contact_buyer'
+
+  // Garde-fou anti-doublon : si le nom existe deja, on ne cree pas un second
+  // dossier — le modele n'a pas toujours reconnu la personne dans la liste.
+  if (isContact) {
+    const existing = findByName(candidates, extraction.contact?.name ?? extraction.target_name)
+    if (existing) {
+      await sendMessage(
+        config,
+        [
+          `⚠️ <b>${escapeHtml(candidateLabel(existing))}</b> existe déjà.`,
+          '',
+          "Je n'ai rien créé pour éviter un doublon.",
+          'Reformule en note si tu veux compléter sa fiche —',
+          `par exemple : « ${escapeHtml(existing.name)} a un budget de 250 000 ».`,
+        ].join('\n'),
+      )
+      return
+    }
+  }
+
+  const target = extraction.target_id
+    ? candidates.find((candidate) => candidate.id === extraction.target_id) ?? null
+    : null
+
+  if ((extraction.intent === 'note' || extraction.intent === 'task') && !target) {
     const hint = extraction.target_name ? ` pour « ${escapeHtml(extraction.target_name)} »` : ''
     await sendMessage(
       config,
-      `Je n'ai pas trouve de dossier${hint}.\nPrecise le nom et la ville, ou cree le contact d'abord.`,
+      `Je n'ai pas trouvé de dossier${hint}.\nPrécise le nom et la ville, ou crée le contact d'abord.`,
     )
     return
   }
 
-  if (extraction.confidence < CONFIDENCE_FLOOR && extraction.target_id) {
-    const label = labelFor(candidates, extraction.target_id)
+  if (target && extraction.confidence < CONFIDENCE_FLOOR) {
     await sendMessage(
       config,
-      `Je ne suis pas sur du dossier (${escapeHtml(label ?? 'inconnu')}).\nRenvoie le message en precisant le nom complet et la ville.`,
+      `Je ne suis pas sûr du dossier (${escapeHtml(candidateLabel(target))}).\nRenvoie le message en précisant le nom complet et la ville.`,
     )
     return
   }
@@ -59,14 +85,15 @@ export async function handleTextMessage(config: TelegramConfig, text: string) {
     chatId: config.allowedChatId,
     sourceText: trimmed,
     extraction,
-    candidateLabel: extraction.target_id ? labelFor(candidates, extraction.target_id) : null,
+    target,
   })
 
-  const link = extraction.target_id
-    ? `\n${env.app.siteUrl}/admin/market/opportunities/${extraction.target_id}`
-    : ''
+  await sendMessage(config, `✅ <b>#${operation.ref}</b> ${escapeHtml(operation.summary)}${linkFor(target)}`)
+}
 
-  await sendMessage(config, `✅ <b>#${operation.ref}</b> ${escapeHtml(operation.summary)}${link}`)
+function linkFor(target: Candidate | null) {
+  if (!target || target.kind !== 'seller') return ''
+  return `\n${env.app.siteUrl}/admin/market/opportunities/${target.id}`
 }
 
 async function handleCommand(config: TelegramConfig, command: string) {
@@ -83,7 +110,7 @@ async function handleCommand(config: TelegramConfig, command: string) {
       const days = args[0]?.toLowerCase().startsWith('sem') ? 7 : 1
       const entries = await listRecap(config.allowedChatId, days)
       if (entries.length === 0) {
-        await sendMessage(config, days === 1 ? "Rien d'enregistre aujourd'hui." : 'Rien enregistre cette semaine.')
+        await sendMessage(config, days === 1 ? "Rien d'enregistré aujourd'hui." : 'Rien enregistré cette semaine.')
         return
       }
       const lines = entries.map((entry) => {
@@ -97,26 +124,17 @@ async function handleCommand(config: TelegramConfig, command: string) {
     case '/annuler': {
       const ref = args[0] ? Number(args[0].replace('#', '')) : undefined
       if (args[0] && !Number.isFinite(ref)) {
-        await sendMessage(config, 'Numero invalide. Exemple : /annuler 47')
+        await sendMessage(config, 'Numéro invalide. Exemple : /annuler 47')
         return
       }
       const summary = await undoOperation(config.allowedChatId, ref)
-      await sendMessage(config, `↩️ Annule — ${escapeHtml(summary)}`)
+      await sendMessage(config, `↩️ Annulé — ${escapeHtml(summary)}`)
       return
     }
 
     default:
       await sendMessage(config, `Commande inconnue : ${escapeHtml(name)}\nTape /aide.`)
   }
-}
-
-function labelFor(
-  candidates: Awaited<ReturnType<typeof listOpportunityCandidates>>,
-  id: string,
-): string | null {
-  const found = candidates.find((candidate) => candidate.id === id)
-  if (!found) return null
-  return [found.seller_name, found.property_city].filter(Boolean).join(' — ') || found.title
 }
 
 /** Marque le message brut comme traite ou en echec. */
