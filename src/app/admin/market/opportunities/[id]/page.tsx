@@ -1405,14 +1405,11 @@ export default function OpportunityDetailPage() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-5">
-        <TabsList
-          variant="line"
-          className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-lg border border-border bg-surface p-1"
-        >
-          <TabsTrigger value="overview" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Vue d’ensemble</TabsTrigger>
-          <TabsTrigger value="estimation" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Estimation</TabsTrigger>
-          <TabsTrigger value="dossier" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Suivi client</TabsTrigger>
-          <TabsTrigger value="history" className="min-h-10 flex-none rounded-md px-4 py-2 text-muted-foreground after:hidden data-active:bg-background data-active:text-brand data-active:shadow-sm sm:flex-1">Historique</TabsTrigger>
+        <TabsList className="w-full justify-start">
+          <TabsTrigger value="overview" className="flex-1">Vue d’ensemble</TabsTrigger>
+          <TabsTrigger value="estimation" className="flex-1">Estimation</TabsTrigger>
+          <TabsTrigger value="dossier" className="flex-1">Suivi client</TabsTrigger>
+          <TabsTrigger value="history" className="flex-1">Historique</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -1453,12 +1450,11 @@ export default function OpportunityDetailPage() {
                     <ActivityRow
                       key={event.id}
                       event={event}
+                      onEdit={editEvent}
                       action={
                         <EventActions
                           event={event}
-                          completing={completingEventId === event.id}
                           deleting={deletingEventId === event.id}
-                          onComplete={completeEvent}
                           onEdit={editEvent}
                           onDelete={deleteEvent}
                         />
@@ -2241,11 +2237,14 @@ function authorLabel(createdBy: string | null) {
   return createdBy
 }
 
-function ActivityRow({ event, action }: { event: OpportunityEvent; action?: React.ReactNode }) {
+function ActivityRow({ event, action, onEdit }: { event: OpportunityEvent; action?: React.ReactNode; onEdit?: (event: OpportunityEvent) => void }) {
   const config = EVENT_CONFIG[event.type]
   const Icon = config.icon
   return (
-    <div className="rounded-lg border p-3">
+    <div 
+      className={cn("rounded-lg border p-3 transition-colors", onEdit && "cursor-pointer hover:bg-muted/50")}
+      onClick={() => onEdit?.(event)}
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -2256,12 +2255,14 @@ function ActivityRow({ event, action }: { event: OpportunityEvent; action?: Reac
           </div>
           {event.content && <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{event.content}</p>}
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1"><Clock className="size-3" /> {formatDateTime(eventDate(event))}</span>
+            {event.due_at && <span className="inline-flex items-center gap-1"><Clock className="size-3" /> Échéance : {formatDateTime(event.due_at)}</span>}
             {authorLabel(event.created_by) && <span>{authorLabel(event.created_by)}</span>}
             {event.completed_at && <span>Terminée le {formatDateTime(event.completed_at)}</span>}
           </div>
         </div>
-        {action}
+        <div onClick={(e) => e.stopPropagation()}>
+          {action}
+        </div>
       </div>
     </div>
   )
@@ -2269,34 +2270,22 @@ function ActivityRow({ event, action }: { event: OpportunityEvent; action?: Reac
 
 function EventActions({
   event,
-  completing,
   deleting,
-  onComplete,
   onEdit,
   onDelete,
 }: {
   event: OpportunityEvent
-  completing?: boolean
   deleting?: boolean
-  onComplete?: (event: OpportunityEvent) => void
   onEdit: (event: OpportunityEvent) => void
   onDelete: (event: OpportunityEvent) => void
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {onComplete && !event.completed_at && ['task', 'call', 'meeting'].includes(event.type) && (
-        <Button variant="outline" size="sm" onClick={() => onComplete(event)} disabled={completing}>
-          {completing ? <Loader2 className="mr-1 size-4 animate-spin" /> : <CheckCircle2 className="mr-1 size-4" />}
-          Terminée
-        </Button>
-      )}
-      <Button variant="outline" size="sm" onClick={() => onEdit(event)}>
-        <Edit className="mr-1 size-4" />
-        Modifier
+      <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => onEdit(event)}>
+        <Edit className="size-4" />
       </Button>
-      <Button variant="outline" size="sm" onClick={() => onDelete(event)} disabled={deleting}>
-        {deleting ? <Loader2 className="mr-1 size-4 animate-spin" /> : null}
-        Supprimer
+      <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" onClick={() => onDelete(event)} disabled={deleting}>
+        {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
       </Button>
     </div>
   )
@@ -2327,6 +2316,7 @@ function Timeline({
           <div className="absolute bottom-[-18px] left-[3px] top-4 w-px bg-border last:hidden" />
           <ActivityRow
             event={event}
+            onEdit={onEdit}
             action={
               <EventActions
                 event={event}
