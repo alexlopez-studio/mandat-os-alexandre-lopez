@@ -86,9 +86,27 @@ export async function upsertAiCredential(input: {
     updated_at: new Date().toISOString(),
   }
 
+  // Le schema n'autorise qu'une cle ACTIVE par fournisseur, via un index unique
+  // partiel (`where status = 'active'`). Postgres refuse un ON CONFLICT sur un
+  // index partiel dont on ne repete pas le predicat, et le client Supabase ne
+  // sait pas l'exprimer : l'upsert echouait avec « no unique or exclusion
+  // constraint matching the ON CONFLICT specification ».
+  // On revoque donc explicitement avant d'inserer, ce qui preserve l'historique
+  // des cles precedentes.
+  const { error: revokeError } = await adminDb()
+    .from('ai_credentials')
+    .update({ status: 'revoked', updated_at: new Date().toISOString() })
+    .eq('provider_id', input.providerId)
+    .eq('status', 'active')
+
+  if (revokeError) {
+    if (isMissingAiSchemaError(revokeError)) throw new Error('Migration 026 Assistant IA non appliquée')
+    throw new Error(revokeError.message)
+  }
+
   const { data, error } = await adminDb()
     .from('ai_credentials')
-    .upsert(payload, { onConflict: 'provider_id' })
+    .insert(payload)
     .select('*')
     .single()
 

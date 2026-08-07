@@ -15,10 +15,140 @@ export type AiGatewayResult = {
 
 const SYSTEM_FALLBACK = `Assistant Mandat OS indisponible: aucune clé IA active n'est configurée.`
 
+// ── Appel d'outils (boucle d'agent) ──────────────────────────
+// Seuls les fournisseurs compatibles OpenAI sont supportés : ils partagent le
+// même format `tools` / `tool_calls`. Anthropic et Google ont chacun le leur,
+// et leur ajout demanderait une implémentation dédiée.
+
+export type AiToolDefinition = {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+export type AiToolCall = {
+  id: string
+  name: string
+  arguments: string
+}
+
+export type AiConversationMessage =
+  | { role: 'system' | 'user'; content: string }
+  | { role: 'assistant'; content: string | null; tool_calls?: AiToolCall[] }
+  | { role: 'tool'; tool_call_id: string; content: string }
+
+export type AiToolTurn = {
+  content: string
+  toolCalls: AiToolCall[]
+  providerId: AiProviderId
+  model: string
+  usage?: Record<string, unknown>
+}
+
+/** Un tour de boucle d'agent : le modèle répond, ou demande des outils. */
+export async function aiChatWithTools(input: {
+  messages: AiConversationMessage[]
+  tools: AiToolDefinition[]
+  providerId?: AiProviderId | null
+  model?: string | null
+}): Promise<AiToolTurn> {
+  const credential = await getActiveAiCredential(input.providerId ?? null)
+  if (!credential) throw new Error("Aucune clé IA active : configure un fournisseur dans les réglages.")
+
+  const provider = getProvider(credential.providerId)
+  if (!provider) throw new Error('Fournisseur IA inconnu')
+  if (!provider.openAiCompatible || !provider.baseUrl) {
+    throw new Error(`${provider.label} ne supporte pas encore l'appel d'outils dans Mandat OS.`)
+  }
+
+  const model = input.model?.trim() || credential.model || provider.defaultModel
+
+  const res = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${credential.apiKey}`,
+      'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
+      'X-Title': 'Mandat OS',
+    },
+    body: JSON.stringify({
+      model,
+      messages: input.messages.map(toWireMessage),
+      temperature: 0.2,
+      max_tokens: 1200,
+      tools: input.tools.map((tool) => ({
+        type: 'function',
+        function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+      })),
+      tool_choice: 'auto',
+    }),
+  })
+
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    // Une boucle d'agent consomme 4 à 6 appels par message : les quotas
+    // gratuits (6 000 tokens/minute chez Groq) sautent très vite. On le dit
+    // clairement plutôt que de remonter l'erreur brute du fournisseur.
+    if (res.status === 429) {
+      throw new Error(
+        "Quota du fournisseur IA atteint. L'agent consomme plusieurs appels par message : "
+          + 'un palier payant est nécessaire, ou attends une minute avant de réessayer.',
+      )
+    }
+    throw new Error(asProviderError(json, `Erreur ${credential.providerId}`))
+  }
+
+  const message = json.choices?.[0]?.message ?? {}
+  const rawCalls = Array.isArray(message.tool_calls) ? message.tool_calls : []
+
+  return {
+    content: typeof message.content === 'string' ? message.content : '',
+    toolCalls: rawCalls.map((call: Record<string, any>) => ({
+      id: String(call.id ?? ''),
+      name: String(call.function?.name ?? ''),
+      arguments: String(call.function?.arguments ?? '{}'),
+    })),
+    providerId: credential.providerId,
+    model,
+    usage: json.usage,
+  }
+}
+
+function toWireMessage(message: AiConversationMessage) {
+  if (message.role === 'tool') {
+    return { role: 'tool', tool_call_id: message.tool_call_id, content: message.content }
+  }
+  if (message.role === 'assistant') {
+    return {
+      role: 'assistant',
+      content: message.content ?? '',
+      ...(message.tool_calls?.length
+        ? {
+            tool_calls: message.tool_calls.map((call) => ({
+              id: call.id,
+              type: 'function',
+              function: { name: call.name, arguments: call.arguments },
+            })),
+          }
+        : {}),
+    }
+  }
+  return { role: message.role, content: message.content }
+}
+
 export async function aiChat(input: {
   messages: AiChatMessage[]
   providerId?: AiProviderId | null
   model?: string | null
+  /**
+   * Force une reponse JSON.
+   *
+   * DeepSeek et les fournisseurs compatibles OpenAI n'exposent que le mode
+   * `json_object` : il garantit un JSON syntaxiquement valide, jamais qu'il
+   * respecte un schema. L'appelant doit donc valider la sortie (zod) et
+   * gerer le cas documente ou le contenu revient vide.
+   */
+  json?: boolean
 }): Promise<AiGatewayResult> {
   const credential = await getActiveAiCredential(input.providerId ?? null)
   if (!credential) {
@@ -40,6 +170,7 @@ export async function aiChat(input: {
       model,
       messages: input.messages,
       providerId: credential.providerId,
+      json: input.json === true,
     })
   }
 
@@ -80,6 +211,7 @@ async function callOpenAiCompatible(input: {
   model: string
   messages: AiChatMessage[]
   providerId: AiProviderId
+  json?: boolean
 }): Promise<AiGatewayResult> {
   const res = await fetch(`${input.baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
@@ -93,6 +225,8 @@ async function callOpenAiCompatible(input: {
       model: input.model,
       messages: input.messages,
       temperature: 0.25,
+      // DeepSeek tronque le JSON si max_tokens est laisse au defaut bas.
+      ...(input.json ? { response_format: { type: 'json_object' }, max_tokens: 2000 } : {}),
     }),
   })
 
