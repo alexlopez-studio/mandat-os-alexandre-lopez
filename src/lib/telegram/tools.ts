@@ -103,7 +103,7 @@ export const TOOL_DEFINITIONS: AiToolDefinition[] = [
   {
     name: 'ajouter_tache',
     description:
-      "Crée une NOUVELLE chose à faire sur un dossier existant. À n'utiliser que si la tâche n'existe pas déjà : si une tâche ouverte équivalente est trouvée, l'outil refuse et renvoie son identifiant pour que tu la modifies à la place.",
+      "Enregistre une chose à faire sur un dossier existant. Si une tâche ouverte équivalente existe déjà, elle n'est pas dupliquée : l'échéance fournie y est appliquée, et l'outil te le signale.",
     parameters: {
       type: 'object',
       properties: {
@@ -220,11 +220,29 @@ export async function executeTool(name: string, rawArgs: string, ctx: ToolContex
 
           const existing = await findSimilarOpenTask(dossier, content)
           if (existing) {
+            // Demander « cette tâche pour telle date » alors qu'elle existe
+            // déjà, c'est vouloir la dater — pas en créer une seconde. On le
+            // fait directement : un refus obligerait le modèle à enchaîner sur
+            // le bon outil, et c'est précisément ce qu'il rate.
+            if (args.echeance) {
+              const operation = await updateTask({ ...ctx, taskId: existing.id, dueDate: args.echeance })
+              return {
+                result: JSON.stringify({
+                  ok: true,
+                  mise_a_jour: true,
+                  note: "La tâche existait déjà : son échéance a été mise à jour, aucune tâche n'a été créée.",
+                  reference: operation.ref,
+                  resume: operation.summary,
+                }),
+                operation,
+              }
+            }
+
             return {
               result: JSON.stringify({
-                erreur: "Une tâche équivalente est déjà ouverte sur ce dossier : création refusée.",
+                deja_present: true,
                 tache_existante: { tache_id: existing.id, contenu: existing.content, echeance: existing.dueDate },
-                a_faire: "Appelle modifier_tache avec cette tache_id plutôt que d'en créer une seconde.",
+                a_faire: "Cette tâche est déjà enregistrée. Pour changer son échéance ou son libellé, appelle modifier_tache avec cette tache_id.",
               }),
             }
           }
