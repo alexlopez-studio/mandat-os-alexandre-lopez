@@ -38,25 +38,26 @@
   --font-serif:  var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-script: var(--font-buffalo), "Brush Script MT", cursive;
 
-  /* ─── Shadcn / UI semantic tokens ───────────────────────── */
-  --color-background:         #FFFFFF;
+  /* ─── Shadcn / UI semantic tokens (Espace Client Vibe) ───── */
+  --color-background:         #F8FAFC; /* slate-50 */
   --color-card:               #FFFFFF;
-  --color-card-foreground:    #000000;
+  --color-card-foreground:    #0F172A; /* slate-900 */
   --color-popover:            #FFFFFF;
-  --color-popover-foreground: #000000;
-  --color-primary:            #00b4ec;
+  --color-popover-foreground: #0F172A;
+  --color-primary:            #00A0E2; /* Espace Client Blue */
   --color-primary-foreground: #FFFFFF;
-  --color-secondary:          #F7FAFC;
-  --color-secondary-foreground:#000000;
-  --color-muted:              #F7FAFC;
-  --color-muted-foreground:   #595959;
-  --color-accent:             #F7FAFC;
-  --color-accent-foreground:  #000000;
-  --color-destructive:        #dc2626;
+  --color-secondary:          #F1F5F9; /* slate-100 */
+  --color-secondary-foreground:#0F172A;
+  --color-muted:              #F1F5F9;
+  --color-muted-foreground:   #64748B; /* slate-500 */
+  --color-accent:             #F1F5F9;
+  --color-accent-foreground:  #0F172A;
+  --color-destructive:        #EF4444; /* red-500 */
   --color-destructive-foreground: #FFFFFF;
-  --color-input:              #E5E7EB;
-  --color-ring:               #00b4ec;
-  --radius:                   0.5rem;
+  --color-input:              #E2E8F0; /* slate-200 */
+  --color-border:             #E2E8F0; /* slate-200 */
+  --color-ring:               #00A0E2;
+  --radius:                   1rem;    /* rounded-2xl */
 
   /* ─── Sidebar tokens ───────────────────────────────────── */
   --color-sidebar:               #fafafa;

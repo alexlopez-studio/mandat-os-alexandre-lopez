@@ -15,6 +15,7 @@ import {
   FlameIcon,
   PlayCircleIcon,
   SparklesIcon,
+  PaletteIcon,
   type LucideIcon,
 } from "lucide-react"
 import type { AdminRole } from "@/types/supabase"
@@ -74,6 +75,15 @@ export function AppSidebar({ role, email, ...props }: AppSidebarProps) {
     return pathname.startsWith(href)
   }
 
+  const isDevOrPreview = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview'
+  const configItems = isDevOrPreview
+    ? [
+        CONFIG_ITEMS[0],
+        { title: 'Design System', url: '/app/design-system', icon: PaletteIcon },
+        ...CONFIG_ITEMS.slice(1),
+      ]
+    : CONFIG_ITEMS
+
   const withActiveState = (items: SidebarNavItem[]) =>
     items.map((item) => ({
       ...item,
@@ -102,7 +112,7 @@ export function AppSidebar({ role, email, ...props }: AppSidebarProps) {
         <NavMain title="Pilotage" items={withActiveState(PILOTAGE_ITEMS)} />
         <NavMain title="Affaires" items={withActiveState(OPPORTUNITY_ITEMS)} />
         <NavMain title="Marché" items={withActiveState(MARKET_ITEMS)} />
-        <NavMain title="Configuration" items={withActiveState(CONFIG_ITEMS)} />
+        <NavMain title="Configuration" items={withActiveState(configItems)} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser
