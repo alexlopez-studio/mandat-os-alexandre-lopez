@@ -9,7 +9,6 @@ import {
   EyeOff,
   KeyRound,
   Loader2,
-  Mail,
   Mic,
   Plus,
   RefreshCw,
@@ -135,26 +134,6 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
   // c'est lui qui dit s'il faut passer par l'administrateur du domaine.
   const [googleOauthError, setGoogleOauthError] = useState<string | null>(null)
   const [testingGoogle, setTestingGoogle] = useState(false)
-  const [scanningEmails, setScanningEmails] = useState(false)
-
-  async function handleScanEmails() {
-    setScanningEmails(true)
-    try {
-      const res = await fetch('/api/cron/scan-emails', { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Erreur lors du scan')
-
-      if (data.createdCount > 0) {
-        toast.success(`${data.createdCount} nouveau(x) projet(s) acquéreur(s) créé(s) depuis vos e-mails !`)
-      } else {
-        toast.info(`Scan e-mails terminé : aucun nouvel acquéreur à importer (${data.totalFound || 0} e-mail(s) vérifié(s)).`)
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Impossible de scanner la boîte Gmail')
-    } finally {
-      setScanningEmails(false)
-    }
-  }
 
   async function testGoogle() {
     setTestingGoogle(true)
@@ -279,6 +258,12 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
   const unconfiguredProviders = useMemo(() => {
     return providers.filter((p) => !credentialsMap.has(p.id))
   }, [providers, credentialsMap])
+
+  // Un compte peut être rattaché sans être exploitable (jeton illisible, scopes
+  // revoqués côté Google). Les deux cas se pilotent différemment : le premier se
+  // déconnecte, le second se reconnecte.
+  const googleLinked = Boolean(google.connection)
+  const googleActive = google.connection?.status === 'active'
 
   function openConfigureModal(provider: Provider) {
     const cred = credentialsMap.get(provider.id)
@@ -621,12 +606,14 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
                     variant="outline"
                     className={cn(
                       'font-bold rounded-full text-[10px] px-2.5 py-0.5',
-                      google.connection
+                      googleActive
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                        : 'border-border bg-muted text-muted-foreground',
+                        : googleLinked
+                          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                          : 'border-border bg-muted text-muted-foreground',
                     )}
                   >
-                    {google.connection ? 'Connecté' : 'Non connecté'}
+                    {googleActive ? 'Connecté' : googleLinked ? 'À reconnecter' : 'Non connecté'}
                   </Badge>
                 </div>
 
@@ -657,7 +644,7 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
               </div>
 
               <div className="pt-3 border-t">
-                {google.connection ? (
+                {googleLinked ? (
                   <div className="space-y-2">
                     <div className="flex gap-2">
                       <Button
@@ -687,19 +674,21 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
                         <span className="truncate">Déconnecter</span>
                       </Button>
                     </div>
-                    <Button
-                      variant="secondary"
-                      onClick={handleScanEmails}
-                      disabled={scanningEmails}
-                      className="w-full h-9 rounded-full font-bold text-xs px-3"
-                    >
-                      {scanningEmails ? (
-                        <Loader2 className="size-3.5 mr-1.5 shrink-0 animate-spin" />
-                      ) : (
-                        <Mail className="size-3.5 mr-1.5 shrink-0 text-primary" />
-                      )}
-                      <span className="truncate">Scanner les e-mails acquéreurs</span>
-                    </Button>
+                    {!googleActive && google.configured && (
+                      <Button
+                        asChild
+                        variant="secondary"
+                        className="w-full h-9 rounded-full font-bold text-xs px-3"
+                      >
+                        <a
+                          href="/api/integrations/google/oauth/start"
+                          className="inline-flex items-center justify-center min-w-0"
+                        >
+                          <RefreshCw className="size-3.5 mr-1.5 shrink-0" />
+                          <span className="truncate">Reconnecter Google</span>
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 ) : google.configured ? (
                   <Button

@@ -24,10 +24,14 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Lecture impossible' }, { status: 500 })
     }
 
+    // On renvoie la connexion quel que soit son statut : filtrer sur `active`
+    // faisait disparaître la carte entière dès qu'un jeton tombait en erreur,
+    // et avec elle le bouton « Déconnecter » — seule issue pour repartir.
+    // C'est à l'interface de distinguer connectée / en erreur.
     return NextResponse.json({
       success: true,
       configured,
-      connection: data && data.status === 'active' ? data : null,
+      connection: data ?? null,
     })
   } catch (err) {
     console.error('[GET /api/integrations/google]', err)
