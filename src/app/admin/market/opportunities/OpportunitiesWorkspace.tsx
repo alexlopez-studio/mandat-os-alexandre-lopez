@@ -24,7 +24,7 @@ export function OpportunitiesWorkspace() {
   
   const [view, setView] = useState<ViewMode>(() => {
     const value = searchParams.get('view')
-    return isViewMode(value) ? value : 'kanban'
+    return isViewMode(value) ? value : 'table'
   })
   
   const [search, setSearch] = useState('')
