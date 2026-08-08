@@ -108,7 +108,7 @@ function SortableProjectCard({ project, activeId }: { project: Project; activeId
   const style = { transform: CSS.Transform.toString(transform), transition }
   
   if (isDragging) {
-    return <div ref={setNodeRef} style={style} className="mb-1.5 h-32 rounded-lg border-2 border-dashed border-primary/50 bg-primary/5" />
+    return <div ref={setNodeRef} style={style} className="mb-1 h-24 rounded-lg border-2 border-dashed border-primary/50 bg-primary/5" />
   }
 
   return (
@@ -124,7 +124,7 @@ function ProjectCard({ project }: { project: Project }) {
   return (
     <Card className="group relative cursor-grab hover:border-primary/50 hover:shadow-md transition-all active:cursor-grabbing overflow-hidden">
       <div className={cn("absolute left-0 top-0 bottom-0 w-1", isVente ? "bg-blue-500" : "bg-emerald-500")} />
-      <CardContent className="p-3 pl-4 flex flex-col gap-2">
+      <CardContent className="p-2 pl-3 flex flex-col gap-1.5">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-1.5 font-medium text-sm">
             {isVente ? <Home className="h-3.5 w-3.5 text-blue-500" /> : <User className="h-3.5 w-3.5 text-emerald-500" />}
@@ -260,8 +260,8 @@ export function ProjectKanbanBoard({ search, kindFilter, activeFilter }: Project
         {MACRO_STAGES.map((stage) => {
           const columnProjects = projectsByStage[stage.id] ?? []
           return (
-            <div key={stage.id} className="w-64 shrink-0">
-              <div className="mb-4 flex items-center justify-between px-1">
+            <div key={stage.id} className="w-60 shrink-0">
+              <div className="mb-3 flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                   <span className={cn('h-2.5 w-2.5 rounded-full', stage.color)} />
                   <h2 className="text-sm font-semibold">{stage.label}</h2>
