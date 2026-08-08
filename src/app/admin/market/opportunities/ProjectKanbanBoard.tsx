@@ -124,31 +124,31 @@ function ProjectCard({ project }: { project: Project }) {
   return (
     <Card className="group relative cursor-grab hover:border-primary/50 hover:shadow-md transition-all active:cursor-grabbing overflow-hidden">
       <div className={cn("absolute left-0 top-0 bottom-0 w-1", isVente ? "bg-blue-500" : "bg-emerald-500")} />
-      <CardContent className="p-2 pl-3 flex flex-col gap-1.5">
+      <CardContent className="p-1.5 pl-2.5 flex flex-col gap-1">
         <div className="flex items-start justify-between">
-          <div className="flex items-center gap-1.5 font-medium text-sm">
-            {isVente ? <Home className="h-3.5 w-3.5 text-blue-500" /> : <User className="h-3.5 w-3.5 text-emerald-500" />}
+          <div className="flex items-center gap-1 font-medium text-xs">
+            {isVente ? <Home className="h-3 w-3 text-blue-500" /> : <User className="h-3 w-3 text-emerald-500" />}
             <span className="truncate max-w-[150px]">{project.title}</span>
           </div>
           <Link href={`/app/opportunities/${project.id}`} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-            <ArrowUpRight className="h-4 w-4" />
+            <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
         </div>
         
         {project.seller_name && (
-          <div className="text-xs text-muted-foreground flex items-center gap-1">
-            <User className="h-3 w-3" />
+          <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+            <User className="h-2.5 w-2.5" />
             <span className="truncate">{project.seller_name}</span>
           </div>
         )}
 
-        <div className="flex items-center justify-between mt-1">
-          <Badge variant="outline" className="text-[10px] py-0 h-5 font-normal">
+        <div className="flex items-center justify-between mt-0.5">
+          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-normal">
             {isVente ? 'Vente' : 'Recherche'}
           </Badge>
           
           {(project.estimated_price_min || project.budget_max) && (
-            <div className="text-xs font-medium text-muted-foreground">
+            <div className="text-[11px] font-medium text-muted-foreground">
               {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(project.estimated_price_min || project.budget_max || 0)}
             </div>
           )}
