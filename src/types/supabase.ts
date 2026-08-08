@@ -2155,6 +2155,93 @@ export type Database = {
         }
         Relationships: []
       }
+      buyer_lead_candidates: {
+        Row: {
+          id: string
+          gmail_message_id: string
+          gmail_thread_id: string | null
+          received_at: string | null
+          subject: string | null
+          from_address: string | null
+          portal: string | null
+          body_excerpt: string | null
+          first_name: string | null
+          last_name: string | null
+          email: string | null
+          phone: string | null
+          property_type: string | null
+          budget_max: number | null
+          communes: string[] | null
+          confidence: number | null
+          extraction: Json | null
+          extracted_by: string
+          matched_project_id: string | null
+          match_reason: string | null
+          status: 'pending' | 'approved' | 'rejected'
+          reviewed_at: string | null
+          review_note: string | null
+          created_project_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          gmail_message_id: string
+          gmail_thread_id?: string | null
+          received_at?: string | null
+          subject?: string | null
+          from_address?: string | null
+          portal?: string | null
+          body_excerpt?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          phone?: string | null
+          property_type?: string | null
+          budget_max?: number | null
+          communes?: string[] | null
+          confidence?: number | null
+          extraction?: Json | null
+          extracted_by?: string
+          matched_project_id?: string | null
+          match_reason?: string | null
+          status?: 'pending' | 'approved' | 'rejected'
+          reviewed_at?: string | null
+          review_note?: string | null
+          created_project_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          gmail_message_id?: string
+          gmail_thread_id?: string | null
+          received_at?: string | null
+          subject?: string | null
+          from_address?: string | null
+          portal?: string | null
+          body_excerpt?: string | null
+          first_name?: string | null
+          last_name?: string | null
+          email?: string | null
+          phone?: string | null
+          property_type?: string | null
+          budget_max?: number | null
+          communes?: string[] | null
+          confidence?: number | null
+          extraction?: Json | null
+          extracted_by?: string
+          matched_project_id?: string | null
+          match_reason?: string | null
+          status?: 'pending' | 'approved' | 'rejected'
+          reviewed_at?: string | null
+          review_note?: string | null
+          created_project_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       dvf_import_runs: {
         Row: {
           id: string

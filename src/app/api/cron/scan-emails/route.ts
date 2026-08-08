@@ -1,39 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { scanBuyerLeadsFromGmail } from '@/lib/email-scanner/buyer-leads-scanner'
-import { supabaseAdmin } from '@/lib/supabase'
+import { getCurrentAdmin } from '@/lib/auth'
 
-export async function GET(_req: NextRequest) {
-  try {
-    const { data: events, error } = await supabaseAdmin
-      .from('lead_events')
-      .select('id, lead_id, payload, created_at')
-      .eq('kind', 'email' as never)
-      .order('created_at', { ascending: false })
-      .limit(30)
+/**
+ * Scan des e-mails acquéreurs.
+ *
+ *  - GET  : appelé par le cron Vercel (les crons ne savent émettre que des GET).
+ *           Protégé par CRON_SECRET dès que la variable est définie.
+ *  - POST : déclenchement manuel depuis l'écran Acquéreurs, réservé à un admin
+ *           connecté.
+ *
+ * La route consomme des appels IA et lit la boîte Gmail : la laisser ouverte,
+ * comme c'était le cas, permettait à n'importe qui de déclencher les deux.
+ */
 
-    if (error) {
-      console.error('[API /api/cron/scan-emails] GET error:', error)
-      return NextResponse.json({ error: 'Erreur lecture historique' }, { status: 500 })
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60 // limite plan Hobby Vercel
+
+function parseLimit(req: NextRequest) {
+  const raw = Number(new URL(req.url).searchParams.get('limit'))
+  return Math.min(50, Math.max(1, raw || 15))
+}
+
+export async function GET(req: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret) {
+    if (req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
     }
-
-    return NextResponse.json({ success: true, history: events || [] })
-  } catch (e) {
-    console.error('[API /api/cron/scan-emails] GET exception:', e)
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  } else if (!(await getCurrentAdmin())) {
+    // Sans CRON_SECRET configuré, on n'ouvre pas la route pour autant : seule
+    // une session admin peut la déclencher.
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
+
+  const summary = await scanBuyerLeadsFromGmail(parseLimit(req))
+  return NextResponse.json(summary, { status: summary.success ? 200 : 400 })
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await getCurrentAdmin())) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  }
+
   try {
-    const { searchParams } = new URL(req.url)
-    const limit = Math.min(50, Math.max(1, Number(searchParams.get('limit')) || 15))
-
-    const summary = await scanBuyerLeadsFromGmail(limit)
-
+    const summary = await scanBuyerLeadsFromGmail(parseLimit(req))
     if (!summary.success) {
       return NextResponse.json({ error: summary.error || 'Erreur lors du scan' }, { status: 400 })
     }
-
     return NextResponse.json(summary)
   } catch (e) {
     console.error('[API /api/cron/scan-emails] POST exception:', e)

@@ -21,8 +21,10 @@ import {
   PageLayout,
   PageSection,
   SearchInput,
+  StatusPill,
 } from '@/components/pro'
 import { ProjectTable } from './ProjectTable'
+import { BuyerLeadCandidates } from './BuyerLeadCandidates'
 import {
   type ProjectKind,
   type ProjectRow,
@@ -34,17 +36,25 @@ const STATUS_OPTIONS = [
   { value: 'all', label: 'Tous les statuts' },
 ]
 
+type WorkspaceTab = ProjectKind | 'all' | 'candidats'
+
 export function OpportunitiesWorkspace() {
   const [search, setSearch] = useState('')
-  const [kindFilter, setKindFilter] = useState<ProjectKind | 'all'>('all')
+  const [tab, setTab] = useState<WorkspaceTab>('all')
   const [statusFilter, setStatusFilter] = useState<string>('active')
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards')
 
   const [projects, setProjects] = useState<ProjectRow[]>([])
   const [loading, setLoading] = useState(true)
   const [scanningEmails, setScanningEmails] = useState(false)
+  const [pendingCandidates, setPendingCandidates] = useState(0)
+
+  // L'onglet des candidats ne filtre pas des projets : il affiche une autre
+  // source. Le filtre `kind` en est donc dérivé, pas confondu avec lui.
+  const kindFilter: ProjectKind | 'all' = tab === 'candidats' ? 'all' : tab
 
   const loadProjects = useCallback(async () => {
+    if (tab === 'candidats') return
     try {
       setLoading(true)
       const params = new URLSearchParams({ search, kind: kindFilter, active: statusFilter })
@@ -58,7 +68,7 @@ export function OpportunitiesWorkspace() {
     } finally {
       setLoading(false)
     }
-  }, [search, kindFilter, statusFilter])
+  }, [search, kindFilter, statusFilter, tab])
 
   const handleScanEmails = async () => {
     setScanningEmails(true)
@@ -67,11 +77,19 @@ export function OpportunitiesWorkspace() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Erreur lors du scan')
 
-      if (data.createdCount > 0) {
-        toast.success(`${data.createdCount} nouveau(x) projet(s) acquéreur(s) créé(s) depuis vos e-mails !`)
-        await loadProjects()
+      if (data.degraded) {
+        // Le modèle n'a pas répondu : l'extraction est retombée sur les motifs.
+        // Le dire ici évite d'attribuer à l'IA une file de mauvaise qualité.
+        toast.warning('Scan terminé en mode dégradé : clé IA indisponible, extraction par motifs.')
+      }
+
+      if (data.candidateCount > 0) {
+        toast.success(`${data.candidateCount} demande(s) d’acquéreur à valider.`)
+        setTab('candidats')
       } else {
-        toast.info(`Scan e-mails terminé : aucun nouvel acquéreur à importer (${data.totalFound || 0} e-mail(s) vérifié(s)).`)
+        toast.info(
+          `Scan terminé : aucune nouvelle demande (${data.totalFound || 0} e-mail(s) examiné(s), ${data.discardedCount || 0} écarté(s)).`,
+        )
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Impossible de scanner la boîte Gmail')
@@ -91,7 +109,7 @@ export function OpportunitiesWorkspace() {
 
   const resetFilters = () => {
     setSearch('')
-    setKindFilter('all')
+    setTab('all')
     setStatusFilter('active')
   }
 
@@ -131,10 +149,10 @@ export function OpportunitiesWorkspace() {
       />
 
       <PageSection>
-        <Tabs 
-          value={kindFilter} 
+        <Tabs
+          value={tab}
           onValueChange={(v) => {
-            setKindFilter(v as ProjectKind | 'all')
+            setTab(v as WorkspaceTab)
           }}
           className="space-y-6"
         >
@@ -148,8 +166,18 @@ export function OpportunitiesWorkspace() {
             <TabsTrigger value="achat" className="text-sm font-bold px-5">
               <Search className="mr-2 h-4 w-4" /> Achats
             </TabsTrigger>
+            <TabsTrigger value="candidats" className="text-sm font-bold px-5">
+              <Mail className="mr-2 h-4 w-4" /> Candidats e-mail
+              {pendingCandidates > 0 ? (
+                <StatusPill tone="brand" className="ml-2">{pendingCandidates}</StatusPill>
+              ) : null}
+            </TabsTrigger>
           </TabsList>
 
+          {tab === 'candidats' ? (
+            <BuyerLeadCandidates onPendingCountChange={setPendingCandidates} />
+          ) : (
+          <>
           <DataToolbar
             variant="pill"
             filters={
@@ -209,6 +237,8 @@ export function OpportunitiesWorkspace() {
               onResetFilters={resetFilters}
               viewMode={viewMode}
             />
+          )}
+          </>
           )}
         </Tabs>
       </PageSection>

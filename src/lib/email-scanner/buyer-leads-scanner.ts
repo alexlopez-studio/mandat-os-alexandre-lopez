@@ -1,6 +1,21 @@
 import { getGoogleAccessToken } from '@/lib/google/tokens'
 import { supabaseAdmin } from '@/lib/supabase'
-import { upsertCrmProspect } from '@/lib/leads-crm'
+import { extractBuyerLeadFromEmail } from '@/lib/email-scanner/ai-extract'
+import { detectPortal } from '@/lib/email-scanner/heuristics'
+import { matchBuyerEmailToProperty } from '@/lib/email-scanner/property-match'
+
+/**
+ * Scan de la boîte Gmail à la recherche de demandes d'acquéreurs.
+ *
+ * Le scanner ne crée plus de projet. Il dépose un candidat dans
+ * `buyer_lead_candidates`, qu'Alexandre valide depuis l'écran Acquéreurs.
+ * Une extraction IA fausse ne peut donc plus polluer le CRM.
+ *
+ * Les e-mails écartés par le modèle sont enregistrés eux aussi, en `rejected`.
+ * C'est ce qui rend le scan idempotent — sans quoi chaque exécution les
+ * réanalyserait, et paierait l'appel IA à chaque fois — et c'est aussi la seule
+ * façon de repérer un vrai acquéreur passé à la trappe.
+ */
 
 export type ScannedEmailResult = {
   gmailMessageId: string
@@ -11,10 +26,11 @@ export type ScannedEmailResult = {
   contactName: string | null
   email: string | null
   phone: string | null
-  propertyTitle: string | null
-  buyerProjectId: string | null
-  contactId: string | null
-  status: 'created' | 'already_processed' | 'ignored' | 'error'
+  confidence: number
+  matchedProjectId: string | null
+  matchReason: string | null
+  candidateId: string | null
+  status: 'candidate' | 'discarded' | 'already_processed' | 'error'
   error?: string
 }
 
@@ -22,17 +38,21 @@ export type ScanSummary = {
   success: boolean
   totalFound: number
   processedCount: number
-  createdCount: number
-  ignoredCount: number
+  /** Candidats en attente de validation, créés par ce scan. */
+  candidateCount: number
+  /** E-mails écartés par le modèle ou déjà traités. */
+  discardedCount: number
+  alreadyProcessedCount: number
   errorCount: number
+  /** Vrai si au moins un e-mail a dû retomber sur l'extraction par motifs. */
+  degraded: boolean
   results: ScannedEmailResult[]
   error?: string
 }
 
 function decodeBase64Url(input: string): string {
   try {
-    const base64 = input.replace(/-/g, '+').replace(/_/g, '/')
-    return Buffer.from(base64, 'base64').toString('utf8')
+    return Buffer.from(input.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
   } catch {
     return ''
   }
@@ -40,132 +60,85 @@ function decodeBase64Url(input: string): string {
 
 function extractEmailBody(payload: any): string {
   if (!payload) return ''
-  if (payload.body?.data) {
-    return decodeBase64Url(payload.body.data)
-  }
+  if (payload.body?.data) return decodeBase64Url(payload.body.data)
   if (Array.isArray(payload.parts)) {
+    // Le texte brut d'abord : le HTML des portails noie l'information utile
+    // sous des kilo-octets de mise en page.
+    const plain = payload.parts.find((p: any) => p.mimeType === 'text/plain')
+    if (plain?.body?.data) return decodeBase64Url(plain.body.data)
     for (const part of payload.parts) {
-      if (part.mimeType === 'text/plain' && part.body?.data) {
-        return decodeBase64Url(part.body.data)
-      }
-      if (part.mimeType === 'text/html' && part.body?.data) {
-        const html = decodeBase64Url(part.body.data)
-        // Dépouiller succinctement le HTML
-        return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
-      }
-      if (part.parts) {
-        const nested = extractEmailBody(part)
-        if (nested) return nested
-      }
+      const nested = extractEmailBody(part)
+      if (nested) return nested
     }
   }
   return ''
 }
 
-function detectPortal(from: string, subject: string, body: string): string {
-  const combined = `${from} ${subject} ${body}`.toLowerCase()
-  if (combined.includes('seloger')) return 'SeLoger'
-  if (combined.includes('leboncoin')) return 'Leboncoin'
-  if (combined.includes('bienici') || combined.includes("bien'ici")) return "Bien'Ici"
-  if (combined.includes('iad')) return 'iad France'
-  if (combined.includes('figaro')) return 'Figaro Immo'
-  if (combined.includes('green-acres')) return 'Green-Acres'
-  if (combined.includes('logic-immo')) return 'Logic-Immo'
-  return 'E-mail Direct'
-}
+/**
+ * Portails par expéditeur, demandes directes par mots-clés dans l'objet.
+ * Le filtre reste large : c'est le modèle qui tranche, pas la requête Gmail.
+ * Mais il n'est pas absent — sans lui, chaque exécution paierait un appel IA
+ * pour chaque newsletter reçue.
+ */
+const GMAIL_QUERY = [
+  '(from:(seloger.com OR leboncoin.fr OR bienici.com OR iadfrance.fr OR figaroimmo.com OR logic-immo.com OR green-acres.com)',
+  'OR subject:(demande OR contact OR acquéreur OR acquereur OR visite OR annonce OR renseignement OR achat OR offre OR "votre bien"))',
+  'newer_than:14d -in:spam -in:trash',
+].join(' ')
 
-function parseLeadDetails(subject: string, body: string, from: string) {
-  const fullText = `${subject}\n${body}`
-  
-  // Extraction téléphone
-  const phoneMatch = fullText.match(/(?:(?:\+|00)33|0)\s*[1-9](?:[\s.-]*\d{2}){4}/)
-  const phone = phoneMatch ? phoneMatch[0].replace(/[\s.-]/g, '') : null
+/** Identifiants déjà traités : la nouvelle table, plus l'historique de l'ancienne implémentation. */
+async function loadProcessedIds(): Promise<Set<string>> {
+  const processed = new Set<string>()
 
-  // Extraction email (exclure l'expéditeur portail si c'est no-reply@seloger.com)
-  const emailMatches = fullText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []
-  const email = emailMatches.find((e) => !e.includes('seloger') && !e.includes('leboncoin') && !e.includes('bienici') && !e.includes('iadfrance') && !e.includes('noreply') && !e.includes('no-reply')) || null
+  const { data: candidates } = await supabaseAdmin
+    .from('buyer_lead_candidates')
+    .select('gmail_message_id')
 
-  // Extraction Nom / Prénom
-  let firstName = ''
-  let lastName = ''
+  candidates?.forEach((row: any) => {
+    if (row.gmail_message_id) processed.add(String(row.gmail_message_id))
+  })
 
-  const namePatterns = [
-    /(?:nom|prénom|prospect|contact|de)\s*:\s*([A-ZÀ-ÿa-z-]+\s+[A-ZÀ-ÿa-z-]+)/i,
-    /(?:message de|demande de)\s+([A-ZÀ-ÿa-z-]+\s+[A-ZÀ-ÿa-z-]+)/i,
-    /([A-ZÀ-ÿa-z-]+)\s+([A-ZÀ-ÿa-z-]+)\s+souhaite/i,
-  ]
+  // Garde-fou de migration : les e-mails traités par la version précédente ont
+  // déjà créé un projet. Sans cette relecture, le premier scan les proposerait
+  // une seconde fois.
+  const { data: legacyEvents } = await supabaseAdmin
+    .from('lead_events')
+    .select('payload')
+    .eq('kind', 'email' as never)
 
-  for (const pat of namePatterns) {
-    const m = fullText.match(pat)
-    if (m && m[1]) {
-      const parts = m[1].trim().split(/\s+/)
-      firstName = parts[0] || ''
-      lastName = parts.slice(1).join(' ') || ''
-      break
-    }
-  }
+  legacyEvents?.forEach((row: any) => {
+    if (row.payload?.gmail_message_id) processed.add(String(row.payload.gmail_message_id))
+  })
 
-  // Type de bien
-  let propertyType: string | null = null
-  if (/maison|villa/i.test(fullText)) propertyType = 'maison'
-  else if (/appartement|t1|t2|t3|t4|t5|studio/i.test(fullText)) propertyType = 'appartement'
-  else if (/terrain/i.test(fullText)) propertyType = 'terrain'
-  else if (/immeuble/i.test(fullText)) propertyType = 'immeuble'
-
-  // Budget
-  let budgetMax: number | null = null
-  const budgetMatch = fullText.match(/(\d[\d\s._]{3,})\s*(?:€|euros)/i)
-  if (budgetMatch) {
-    const rawVal = budgetMatch[1].replace(/[\s._]/g, '')
-    const val = Number(rawVal)
-    if (!Number.isNaN(val) && val > 10000) {
-      budgetMax = val
-    }
-  }
-
-  return {
-    firstName: firstName.trim(),
-    lastName: lastName.trim(),
-    email,
-    phone,
-    propertyType,
-    budgetMax,
-  }
+  return processed
 }
 
 export async function scanBuyerLeadsFromGmail(limit = 15): Promise<ScanSummary> {
+  const empty = {
+    totalFound: 0,
+    processedCount: 0,
+    candidateCount: 0,
+    discardedCount: 0,
+    alreadyProcessedCount: 0,
+    errorCount: 0,
+    degraded: false,
+    results: [] as ScannedEmailResult[],
+  }
+
   const token = await getGoogleAccessToken()
   if (!token) {
     return {
       success: false,
-      totalFound: 0,
-      processedCount: 0,
-      createdCount: 0,
-      ignoredCount: 0,
-      errorCount: 0,
-      results: [],
+      ...empty,
       error: 'Compte Google non connecté ou jeton expiré. Reconnectez le compte dans Réglages.',
     }
   }
 
   try {
-    // 1. Charger les IDs d'e-mails déjà traités pour idempotence
-    const { data: existingEvents } = await supabaseAdmin
-      .from('lead_events')
-      .select('payload')
-      .eq('kind', 'email' as never)
+    const processedIds = await loadProcessedIds()
 
-    const processedIds = new Set<string>()
-    existingEvents?.forEach((row: any) => {
-      if (row.payload?.gmail_message_id) {
-        processedIds.add(String(row.payload.gmail_message_id))
-      }
-    })
-
-    // 2. Rechercher les e-mails de demandes d'acquéreurs dans Gmail
-    const searchQuery = 'subject:(demande OR contact OR acquéreur OR seloger OR leboncoin OR bienici OR iad OR prospect OR offre)'
     const listUrl = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages')
-    listUrl.searchParams.set('q', searchQuery)
+    listUrl.searchParams.set('q', GMAIL_QUERY)
     listUrl.searchParams.set('maxResults', String(limit))
 
     const listRes = await fetch(listUrl.toString(), {
@@ -181,13 +154,15 @@ export async function scanBuyerLeadsFromGmail(limit = 15): Promise<ScanSummary> 
     const messages: { id: string; threadId: string }[] = listData.messages || []
 
     const results: ScannedEmailResult[] = []
-    let createdCount = 0
-    let ignoredCount = 0
+    let candidateCount = 0
+    let discardedCount = 0
+    let alreadyProcessedCount = 0
     let errorCount = 0
+    let degraded = false
 
-    // 3. Traiter chaque message Gmail
     for (const item of messages) {
       if (processedIds.has(item.id)) {
+        alreadyProcessedCount += 1
         results.push({
           gmailMessageId: item.id,
           subject: 'Déjà traité',
@@ -197,12 +172,12 @@ export async function scanBuyerLeadsFromGmail(limit = 15): Promise<ScanSummary> 
           contactName: null,
           email: null,
           phone: null,
-          propertyTitle: null,
-          buyerProjectId: null,
-          contactId: null,
+          confidence: 0,
+          matchedProjectId: null,
+          matchReason: null,
+          candidateId: null,
           status: 'already_processed',
         })
-        ignoredCount += 1
         continue
       }
 
@@ -225,131 +200,72 @@ export async function scanBuyerLeadsFromGmail(limit = 15): Promise<ScanSummary> 
         const from = headers.find((h) => h.name.toLowerCase() === 'from')?.value || ''
         const date = headers.find((h) => h.name.toLowerCase() === 'date')?.value || new Date().toISOString()
         const bodyText = extractEmailBody(msgData.payload)
-
         const portal = detectPortal(from, subject, bodyText)
-        const extracted = parseLeadDetails(subject, bodyText, from)
 
-        // Si aucun contact valide (email/phone/nom) trouvé, marquer comme ignoré
-        if (!extracted.email && !extracted.phone && !extracted.firstName && !extracted.lastName) {
-          ignoredCount += 1
-          results.push({
-            gmailMessageId: item.id,
-            subject,
-            from,
-            date,
-            portal,
-            contactName: null,
-            email: null,
-            phone: null,
-            propertyTitle: null,
-            buyerProjectId: null,
-            contactId: null,
-            status: 'ignored',
-          })
-          continue
-        }
+        const extraction = await extractBuyerLeadFromEmail({ subject, from, body: bodyText })
+        if (extraction.extractedBy === 'heuristics') degraded = true
 
-        // A. Insérer dans `contacts` (Annuaire principal)
-        let contactId: string | null = null
-        if (extracted.email) {
-          const { data: existingC } = await supabaseAdmin
-            .from('contacts')
-            .select('id')
-            .eq('email', extracted.email)
-            .maybeSingle()
-          if (existingC?.id) contactId = existingC.id
-        }
-        if (!contactId && extracted.phone) {
-          const { data: existingP } = await supabaseAdmin
-            .from('contacts')
-            .select('id')
-            .eq('phone', extracted.phone)
-            .maybeSingle()
-          if (existingP?.id) contactId = existingP.id
-        }
-
-        if (!contactId) {
-          const { data: newC, error: cErr } = await supabaseAdmin
-            .from('contacts')
-            .insert({
-              first_name: extracted.firstName || 'Acquéreur',
-              last_name: extracted.lastName || portal,
-              email: extracted.email,
-              phone: extracted.phone,
-              source: portal,
-              types: ['acquereur'],
+        const match = extraction.isBuyerLead
+          ? await matchBuyerEmailToProperty({
+              propertyReference: extraction.propertyReference,
+              communes: extraction.communes,
+              propertyType: extraction.propertyType,
+              subject,
             })
-            .select('id')
-            .single()
+          : null
 
-          if (!cErr && newC) {
-            contactId = newC.id
-          }
-        }
+        const receivedAt = Number.isNaN(Date.parse(date)) ? new Date().toISOString() : new Date(date).toISOString()
 
-        // B. Insérer dans `prospects` pour la gestion CRM
-        const prospect = await upsertCrmProspect({
-          email: extracted.email,
-          firstName: extracted.firstName || 'Acquéreur',
-          lastName: extracted.lastName || portal,
-          phone: extracted.phone,
-        }).catch(() => null)
-
-        // C. Créer le Projet d'Achat (`buyer_criteria`)
-        const { data: buyer, error: buyerErr } = await supabaseAdmin
-          .from('buyer_criteria')
+        const { data: candidate, error: insertError } = await supabaseAdmin
+          .from('buyer_lead_candidates')
           .insert({
-            prospect_id: prospect?.id || contactId || null,
-            type_bien: extracted.propertyType,
-            budget_max: extracted.budgetMax,
-            criteres: [portal, `Email: ${subject}`],
-            active: true,
-            stage: 'Nouveau contact',
-            next_action: `Qualifier la demande reçue via ${portal}`,
+            gmail_message_id: item.id,
+            gmail_thread_id: item.threadId ?? null,
+            received_at: receivedAt,
+            subject,
+            from_address: from,
+            portal,
+            body_excerpt: bodyText.slice(0, 1000) || null,
+            first_name: extraction.firstName || null,
+            last_name: extraction.lastName || null,
+            email: extraction.email,
+            phone: extraction.phone,
+            property_type: extraction.propertyType,
+            budget_max: extraction.budgetMax,
+            communes: extraction.communes.length ? extraction.communes : null,
+            confidence: extraction.confidence,
+            extraction: extraction.raw as never,
+            extracted_by: extraction.extractedBy,
+            matched_project_id: match?.projectId ?? null,
+            match_reason: match?.reason ?? null,
+            status: extraction.isBuyerLead ? 'pending' : 'rejected',
+            review_note: extraction.isBuyerLead
+              ? extraction.summary
+              : 'Écarté automatiquement : non identifié comme demande d\'acquéreur',
+            reviewed_at: extraction.isBuyerLead ? null : new Date().toISOString(),
           })
-          .select('*')
+          .select('id')
           .single()
 
-        if (buyerErr || !buyer) {
-          throw new Error(`Création projet acquéreur impossible: ${buyerErr?.message || 'Erreur'}`)
-        }
+        if (insertError) throw new Error(`Enregistrement du candidat impossible: ${insertError.message}`)
 
-        // D. Liens `project_contacts`
-        if (contactId) {
-          await supabaseAdmin.from('project_contacts').insert({
-            contact_id: contactId,
-            buyer_criteria_id: buyer.id,
-            role: 'Acquéreur principal',
-          })
-        }
+        if (extraction.isBuyerLead) candidateCount += 1
+        else discardedCount += 1
 
-        // E. Logger dans `lead_events` pour l'idempotence
-        await supabaseAdmin.from('lead_events').insert({
-          lead_id: buyer.id,
-          kind: 'email' as never,
-          payload: {
-            gmail_message_id: item.id,
-            subject,
-            portal,
-            contact_id: contactId,
-          },
-          created_by: 'system',
-        } as never)
-
-        createdCount += 1
         results.push({
           gmailMessageId: item.id,
           subject,
           from,
           date,
           portal,
-          contactName: [extracted.firstName, extracted.lastName].filter(Boolean).join(' ') || 'Acquéreur',
-          email: extracted.email,
-          phone: extracted.phone,
-          propertyTitle: extracted.propertyType ? `Recherche ${extracted.propertyType}` : 'Projet Achat',
-          buyerProjectId: buyer.id,
-          contactId,
-          status: 'created',
+          contactName: [extraction.firstName, extraction.lastName].filter(Boolean).join(' ') || null,
+          email: extraction.email,
+          phone: extraction.phone,
+          confidence: extraction.confidence,
+          matchedProjectId: match?.projectId ?? null,
+          matchReason: match?.reason ?? null,
+          candidateId: candidate?.id ?? null,
+          status: extraction.isBuyerLead ? 'candidate' : 'discarded',
         })
       } catch (itemError) {
         errorCount += 1
@@ -362,9 +278,10 @@ export async function scanBuyerLeadsFromGmail(limit = 15): Promise<ScanSummary> 
           contactName: null,
           email: null,
           phone: null,
-          propertyTitle: null,
-          buyerProjectId: null,
-          contactId: null,
+          confidence: 0,
+          matchedProjectId: null,
+          matchReason: null,
+          candidateId: null,
           status: 'error',
           error: itemError instanceof Error ? itemError.message : 'Erreur inconnue',
         })
@@ -374,22 +291,20 @@ export async function scanBuyerLeadsFromGmail(limit = 15): Promise<ScanSummary> 
     return {
       success: true,
       totalFound: messages.length,
-      processedCount: messages.length - ignoredCount,
-      createdCount,
-      ignoredCount,
+      processedCount: messages.length - alreadyProcessedCount,
+      candidateCount,
+      discardedCount,
+      alreadyProcessedCount,
       errorCount,
+      degraded,
       results,
     }
   } catch (e) {
     console.error('[buyer-leads-scanner] Exception:', e)
     return {
       success: false,
-      totalFound: 0,
-      processedCount: 0,
-      createdCount: 0,
-      ignoredCount: 0,
+      ...empty,
       errorCount: 1,
-      results: [],
       error: e instanceof Error ? e.message : 'Erreur serveur lors de la numérisation',
     }
   }
