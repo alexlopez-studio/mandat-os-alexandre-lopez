@@ -1628,7 +1628,7 @@ export default function BuyerProjectDetailPage() {
         onOpenChange={setContactDialogOpen}
         projectId={projectId}
         kind="achat"
-        onChanged={loadProject}
+        onAttached={loadProject}
       />
     </PageLayout>
   )
