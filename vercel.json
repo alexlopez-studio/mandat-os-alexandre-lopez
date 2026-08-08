@@ -3,6 +3,6 @@
   "buildCommand": "npm run build",
   "crons": [
     { "path": "/api/jobs/sync-zones", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/scan-emails", "schedule": "0 7-19 * * *" }
+    { "path": "/api/cron/scan-emails", "schedule": "0 6 * * *" }
   ]
 }
