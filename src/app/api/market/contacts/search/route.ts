@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { isContactType } from '@/lib/contact-types'
 
 export const dynamic = 'force-dynamic'
 
@@ -7,15 +8,22 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const q = searchParams.get('q') ?? ''
-    const limit = Math.min(Number(searchParams.get('limit')) || 10, 50)
+    const type = searchParams.get('type') ?? ''
+    const limit = Math.min(Number(searchParams.get('limit')) || 10, 200)
 
     let query = supabaseAdmin
-      .from('contacts')
-      .select('id, first_name, last_name, email, phone, source')
-      
+      .from('contacts_directory')
+      .select('id, first_name, last_name, email, phone, company, relation, source, types, all_types, projects_count')
+
     if (q) {
-      // Or search across names, email, phone
-      query = query.or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%`)
+      // Or search across names, email, phone, company
+      query = query.or(
+        `first_name.ilike.%${q}%,last_name.ilike.%${q}%,email.ilike.%${q}%,phone.ilike.%${q}%,company.ilike.%${q}%`
+      )
+    }
+
+    if (isContactType(type)) {
+      query = query.contains('all_types', [type])
     }
 
     const { data: contacts, error } = await query

@@ -33,47 +33,126 @@ export type AiDossierContext = {
   }>
 }
 
-export async function loadAiDossierContext(dossierId: string): Promise<AiDossierContext | null> {
-  const { data: dossier, error } = await adminDb()
+export async function loadAiDossierContext(id: string): Promise<AiDossierContext | null> {
+  // 1. Check client_dossiers
+  const { data: dossier } = await adminDb()
     .from('client_dossiers')
     .select('id, title, status, client_type, property_snapshot, advisor_note, client_profile:client_profiles(email, first_name, last_name, phone)')
-    .eq('id', dossierId)
+    .eq('id', id)
     .maybeSingle()
 
-  if (error) throw new Error(error.message)
-  if (!dossier) return null
+  if (dossier) {
+    const [{ data: documents }, { data: events }] = await Promise.all([
+      adminDb()
+        .from('client_documents')
+        .select('id, label, category, status, notes')
+        .eq('dossier_id', id)
+        .order('created_at', { ascending: true }),
+      adminDb()
+        .from('client_dossier_events')
+        .select('id, type, title, description, status, event_date')
+        .eq('dossier_id', id)
+        .order('event_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .limit(20),
+    ])
 
-  const [{ data: documents, error: documentsError }, { data: events, error: eventsError }] = await Promise.all([
-    adminDb()
-      .from('client_documents')
-      .select('id, label, category, status, notes')
-      .eq('dossier_id', dossierId)
-      .order('created_at', { ascending: true }),
-    adminDb()
-      .from('client_dossier_events')
-      .select('id, type, title, description, status, event_date')
-      .eq('dossier_id', dossierId)
-      .order('event_date', { ascending: true, nullsFirst: false })
-      .order('created_at', { ascending: false })
-      .limit(20),
-  ])
-
-  if (documentsError) throw new Error(documentsError.message)
-  if (eventsError) throw new Error(eventsError.message)
-
-  return {
-    dossier: {
-      id: dossier.id,
-      title: dossier.title,
-      status: dossier.status,
-      client_type: dossier.client_type,
-      property_snapshot: dossier.property_snapshot,
-      advisor_note: dossier.advisor_note,
-    },
-    client: dossier.client_profile ?? null,
-    documents: documents ?? [],
-    events: events ?? [],
+    return {
+      dossier: {
+        id: dossier.id,
+        title: dossier.title,
+        status: dossier.status,
+        client_type: dossier.client_type,
+        property_snapshot: dossier.property_snapshot,
+        advisor_note: dossier.advisor_note,
+      },
+      client: dossier.client_profile ?? null,
+      documents: documents ?? [],
+      events: events ?? [],
+    }
   }
+
+  // 2. Check opportunities (Projet Vente)
+  const { data: opp } = await adminDb()
+    .from('opportunities')
+    .select('id, title, stage, property_city, property_type, type_bien, estimated_price_min, estimated_price_max, notes')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (opp) {
+    const { data: links } = await adminDb()
+      .from('project_contacts')
+      .select('contact:contacts(first_name, last_name, email, phone)')
+      .eq('opportunity_id', id)
+
+    const contactsList = (links ?? []).map((l: any) => l.contact).filter(Boolean)
+    const primaryContact = contactsList[0] ?? null
+
+    return {
+      dossier: {
+        id: opp.id,
+        title: opp.title || 'Projet Vente',
+        status: opp.stage || 'Actif',
+        client_type: 'vendeur',
+        property_snapshot: {
+          city: opp.property_city,
+          type: opp.property_type || opp.type_bien,
+          price_range: [opp.estimated_price_min, opp.estimated_price_max],
+        },
+        advisor_note: opp.notes || null,
+      },
+      client: primaryContact ? {
+        first_name: primaryContact.first_name || '',
+        last_name: primaryContact.last_name || '',
+        email: primaryContact.email || '',
+        phone: primaryContact.phone || null,
+      } : null,
+      documents: [],
+      events: [],
+    }
+  }
+
+  // 3. Check buyer_criteria (Projet Achat)
+  const { data: bc } = await adminDb()
+    .from('buyer_criteria')
+    .select('id, lead_id, type_bien, communes, budget_max, stage, active, notes')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (bc) {
+    const { data: links } = await adminDb()
+      .from('project_contacts')
+      .select('contact:contacts(first_name, last_name, email, phone)')
+      .eq('buyer_criteria_id', id)
+
+    const contactsList = (links ?? []).map((l: any) => l.contact).filter(Boolean)
+    const primaryContact = contactsList[0] ?? null
+
+    return {
+      dossier: {
+        id: bc.id,
+        title: `Recherche ${bc.type_bien || 'bien'}`,
+        status: bc.stage || (bc.active ? 'Actif' : 'Inactif'),
+        client_type: 'acquereur',
+        property_snapshot: {
+          communes: bc.communes,
+          type: bc.type_bien,
+          budget_max: bc.budget_max,
+        },
+        advisor_note: bc.notes || null,
+      },
+      client: primaryContact ? {
+        first_name: primaryContact.first_name || '',
+        last_name: primaryContact.last_name || '',
+        email: primaryContact.email || '',
+        phone: primaryContact.phone || null,
+      } : null,
+      documents: [],
+      events: [],
+    }
+  }
+
+  return null
 }
 
 export async function listDossierCandidates() {

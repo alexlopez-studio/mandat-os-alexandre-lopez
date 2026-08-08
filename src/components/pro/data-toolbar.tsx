@@ -1,8 +1,25 @@
 import * as React from 'react'
 
+import { cva, type VariantProps } from 'class-variance-authority'
+
 import { cn } from '@/lib/utils'
 
-type DataToolbarProps = React.ComponentProps<'div'> & {
+const dataToolbarVariants = cva(
+  'flex flex-col md:flex-row md:items-center md:justify-between',
+  {
+    variants: {
+      variant: {
+        default: 'gap-3 rounded-lg border border-border bg-card p-3 shadow-sm',
+        pill: 'bg-white border border-slate-100 p-1.5 rounded-2xl gap-1 overflow-x-auto scrollbar-none shadow-sm h-auto',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+    },
+  }
+)
+
+type DataToolbarProps = React.ComponentProps<'div'> & VariantProps<typeof dataToolbarVariants> & {
   title?: string
   description?: string
   filters?: React.ReactNode
@@ -14,15 +31,13 @@ function DataToolbar({
   description,
   filters,
   actions,
+  variant,
   className,
   ...props
 }: DataToolbarProps) {
   return (
     <div
-      className={cn(
-        'flex flex-col gap-3 rounded-lg border border-border bg-card p-3 shadow-sm md:flex-row md:items-center md:justify-between',
-        className
-      )}
+      className={cn(dataToolbarVariants({ variant }), className)}
       {...props}
     >
       {(title || description) ? (

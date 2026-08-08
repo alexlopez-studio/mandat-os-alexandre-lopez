@@ -3,17 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Bot,
-  CheckCircle2,
-  CircleAlert,
-  Clock3,
-  FileCheck2,
+  FolderOpen,
+  Home,
+  Layers,
   Loader2,
-  Play,
-  RefreshCw,
+  MessageSquare,
+  Plus,
+  Search,
   Send,
-  ShieldCheck,
   Sparkles,
-  X,
+  Trash2,
   User,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -23,29 +22,19 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { PageHeader, PageLayout, PageSection } from '@/components/pro'
 import { cn } from '@/lib/utils'
 
-type Provider = {
+type ProjectRow = {
   id: string
-  label: string
-  defaultModel: string
-  configured: boolean
-}
-
-type Dossier = {
-  id: string
-  title: string
-  status: string
-  client_type: string
-  client_profile?: {
-    email?: string
-    first_name?: string
-    last_name?: string
-  }
-  stats?: {
-    documents_missing?: number
-    documents_validated?: number
-  }
+  kind: 'vente' | 'achat'
+  title?: string
+  display_title?: string
+  stage?: string | null
+  property_city?: string | null
+  communes?: string[] | null
+  next_action?: string | null
+  contacts?: Array<{ name: string; role?: string }>
 }
 
 type ChatMessage = {
@@ -53,68 +42,112 @@ type ChatMessage = {
   content: string
 }
 
-type AiAction = {
+type ThreadItem = {
   id: string
   title: string
-  description: string | null
-  action_type: string
-  status: 'proposed' | 'approved' | 'rejected' | 'executed' | 'failed'
-  risk_level: 'low' | 'medium' | 'high'
-  created_at: string
   dossier_id: string | null
+  created_at: string
+}
+
+const INITIAL_MESSAGE: ChatMessage = {
+  role: 'assistant',
+  content: 'Bonjour Alexandre. Sélectionnez un projet de vente ou d’achat dans le volet de droite pour que j’analyse ses données et documents, puis posez-moi vos questions.',
 }
 
 export function AssistantWorkspace() {
-  const [providers, setProviders] = useState<Provider[]>([])
-  const [providerId, setProviderId] = useState<string>('openrouter')
-  const [model, setModel] = useState('')
-  const [dossiers, setDossiers] = useState<Dossier[]>([])
-  const [dossierId, setDossierId] = useState<string>('none')
-  const [actions, setActions] = useState<AiAction[]>([])
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      content: 'Bonjour Alexandre. Sélectionne un dossier si besoin, puis demande-moi de préparer une réponse, un compte rendu, une relance ou une synthèse. Je proposerai les actions, tu gardes la main.',
-    },
-  ])
+  const [projects, setProjects] = useState<ProjectRow[]>([])
+  const [projectId, setProjectId] = useState<string>('none')
+  const [projectKindFilter, setProjectKindFilter] = useState<'all' | 'vente' | 'achat'>('all')
+  const [threads, setThreads] = useState<ThreadItem[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [threadId, setThreadId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadingThreadId, setLoadingThreadId] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-  const [busyAction, setBusyAction] = useState<string | null>(null)
 
-  const activeProvider = useMemo(() => providers.find((provider) => provider.id === providerId), [providers, providerId])
-  const selectedDossier = useMemo(() => dossiers.find((dossier) => dossier.id === dossierId), [dossiers, dossierId])
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === projectId),
+    [projects, projectId]
+  )
+
+  const filteredProjects = useMemo(() => {
+    if (projectKindFilter === 'all') return projects
+    return projects.filter((p) => p.kind === projectKindFilter)
+  }, [projects, projectKindFilter])
+
+  const loadThreads = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ai/threads')
+      if (!res.ok) return
+      const json = await res.json()
+      setThreads(json.data ?? [])
+    } catch (err) {
+      console.error('Erreur chargement de l\'historique', err)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [providerRes, dossiersRes, actionsRes] = await Promise.all([
-        fetch('/api/ai/providers'),
-        fetch('/api/market/clients?page_size=50&client_type=seller'),
-        fetch('/api/ai/actions?status=proposed'),
+      const [projectsRes] = await Promise.all([
+        fetch('/api/market/projects?active=all'),
+        loadThreads(),
       ])
-      const providerJson = await providerRes.json()
-      const dossiersJson = await dossiersRes.json()
-      const actionsJson = await actionsRes.json()
-
-      const providerData = providerJson.data
-      setProviders(providerData?.providers ?? [])
-      setProviderId(providerData?.defaults?.providerId ?? 'openrouter')
-      setModel(providerData?.defaults?.model ?? '')
-      setDossiers(dossiersJson.data ?? [])
-      setActions(actionsJson.data ?? [])
+      const projectsJson = await projectsRes.json()
+      setProjects(projectsJson.projects ?? [])
     } catch (err) {
       console.error(err)
-      toast.error('Chargement assistant impossible')
+      toast.error('Chargement des projets impossible')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadThreads])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  const newConversation = () => {
+    setThreadId(null)
+    setMessages([INITIAL_MESSAGE])
+    setInput('')
+    toast.info('Nouvelle conversation démarrée')
+  }
+
+  const selectThread = async (id: string) => {
+    if (loadingThreadId || threadId === id) return
+    setLoadingThreadId(id)
+    try {
+      const res = await fetch(`/api/ai/threads/${id}`)
+      if (!res.ok) throw new Error('Impossible de charger la conversation')
+      const json = await res.json()
+      setThreadId(id)
+      setMessages(json.data.messages.length > 0 ? json.data.messages : [INITIAL_MESSAGE])
+      if (json.data.thread.dossier_id) {
+        setProjectId(json.data.thread.dossier_id)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erreur chargement')
+    } finally {
+      setLoadingThreadId(null)
+    }
+  }
+
+  const deleteThread = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      const res = await fetch(`/api/ai/threads/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Erreur lors de la suppression')
+      toast.success('Conversation supprimée')
+      if (threadId === id) {
+        newConversation()
+      }
+      await loadThreads()
+    } catch {
+      toast.error('Impossible de supprimer la conversation')
+    }
+  }
 
   async function sendMessage() {
     const message = input.trim()
@@ -129,19 +162,14 @@ export function AssistantWorkspace() {
         body: JSON.stringify({
           message,
           thread_id: threadId,
-          dossier_id: dossierId === 'none' ? null : dossierId,
-          provider_id: providerId,
-          model,
+          dossier_id: projectId === 'none' ? null : projectId,
         }),
       })
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.error ?? 'Réponse impossible')
       setThreadId(json.data.thread_id)
       setMessages((current) => [...current, { role: 'assistant', content: json.data.answer }])
-      if ((json.data.proposed_actions ?? []).length > 0) {
-        toast.success(`${json.data.proposed_actions.length} action(s) proposée(s)`)
-        await refreshActions()
-      }
+      await loadThreads()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erreur assistant'
       toast.error(message)
@@ -151,143 +179,98 @@ export function AssistantWorkspace() {
     }
   }
 
-  async function refreshActions() {
-    const res = await fetch('/api/ai/actions?status=proposed')
-    const json = await res.json()
-    setActions(json.data ?? [])
-  }
-
-  async function actOnAction(actionId: string, decision: 'approve' | 'reject' | 'execute') {
-    setBusyAction(`${actionId}:${decision}`)
-    try {
-      const res = await fetch('/api/ai/actions', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: actionId, decision }),
-      })
-      const json = await res.json()
-      if (!res.ok || !json.success) throw new Error(json.error ?? 'Action impossible')
-      toast.success(decision === 'reject' ? 'Action rejetée' : decision === 'execute' ? 'Action exécutée' : 'Action approuvée')
-      await refreshActions()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Action impossible')
-    } finally {
-      setBusyAction(null)
-    }
-  }
-
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="animate-spin size-4" /> Chargement assistant IA...</div>
+    return (
+      <PageLayout width="wide">
+        <div className="flex h-64 items-center justify-center gap-2 text-sm text-muted-foreground font-medium">
+          <Loader2 className="animate-spin size-5 text-primary" /> Chargement de l'assistant IA...
+        </div>
+      </PageLayout>
+    )
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50/50 -m-8 p-8 text-slate-900 font-sans">
-      <div className="mx-auto w-full max-w-7xl flex flex-col gap-6">
-        
-        {/* Header Espace Client Style */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
-          <div>
-            <span className="text-[10px] font-bold text-[#00A0E2] uppercase tracking-wider">Assistant IA</span>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">Copilote Mandat OS</h1>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-              Un assistant privé connecté aux dossiers. Il prépare, propose et attend ta validation avant toute action.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
-            <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 text-xs font-semibold px-4 py-2.5 rounded-full border border-emerald-100">
-              <ShieldCheck className="mr-1 size-4" /> Validation humaine
-            </div>
-            <Button variant="outline" size="sm" onClick={() => void load()} className="rounded-full h-auto py-2.5 bg-white">
-              <RefreshCw className="mr-2 size-3.5" />
-              Actualiser
-            </Button>
-          </div>
-        </div>
+    <PageLayout width="wide">
+      <PageHeader
+        eyebrow="Assistant IA"
+        title="Copilote Mandat OS"
+        description="Un assistant privé connecté à vos projets de vente et d'achat pour répondre à vos questions et analyser vos dossiers."
+      />
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <PageSection>
+        <div className="grid gap-6 lg:grid-cols-12">
           {/* Main Chat Area */}
-          <div className="flex flex-col gap-6">
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 flex flex-col h-[700px]">
+          <div className="space-y-6 lg:col-span-8">
+            <div className="rounded-2xl border bg-card p-6 shadow-xs flex flex-col h-[720px]">
               
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-5 mb-5">
+              {/* Toolbar header */}
+              <div className="flex items-center justify-between border-b pb-4 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="bg-[#00A0E2]/10 p-2.5 rounded-2xl">
-                    <Bot className="size-5 text-[#00A0E2]" />
+                  <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                    <Bot className="size-5" />
                   </div>
                   <div>
-                    <h2 className="text-base font-bold text-slate-900">Conversation</h2>
-                    <p className="text-xs text-slate-500">Contexte, réponses et actions.</p>
+                    <h2 className="text-base font-bold text-foreground">Conversation</h2>
+                    <p className="text-xs text-muted-foreground font-medium">
+                      {selectedProject ? `Contexte actif : ${selectedProject.display_title || selectedProject.title}` : 'Aucun projet sélectionné (conversation générale)'}
+                    </p>
                   </div>
                 </div>
-                
-                <div className="flex flex-wrap gap-2 lg:min-w-[400px]">
-                  <Select value={providerId} onValueChange={setProviderId}>
-                    <SelectTrigger className="h-9 text-xs rounded-xl bg-slate-50 border-slate-200">
-                      <SelectValue placeholder="Fournisseur IA" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providers.map((provider) => (
-                        <SelectItem key={provider.id} value={provider.id} className="text-xs">
-                          {provider.label}{provider.configured ? '' : ' (non configuré)'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select value={dossierId} onValueChange={setDossierId}>
-                    <SelectTrigger className="h-9 text-xs rounded-xl bg-slate-50 border-slate-200">
-                      <SelectValue placeholder="Dossier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none" className="text-xs">Sans dossier</SelectItem>
-                      {dossiers.map((dossier) => (
-                        <SelectItem key={dossier.id} value={dossier.id} className="text-xs">
-                          {dossier.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+
+                <Button variant="outline" size="sm" onClick={newConversation} className="rounded-full font-semibold text-xs">
+                  <Plus className="mr-1.5 size-3.5" /> Nouvelle conversation
+                </Button>
               </div>
 
-              {selectedDossier ? (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm mb-5">
+              {selectedProject ? (
+                <div className="rounded-xl border bg-muted/40 p-3 text-xs mb-4 flex items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-900">{selectedDossier.title}</span>
-                    <Badge variant="outline" className="rounded-md bg-white">{selectedDossier.status}</Badge>
-                    {selectedDossier.stats?.documents_missing ? (
-                      <Badge variant="outline" className="rounded-md border-amber-200 bg-amber-50 text-amber-700">
-                        {selectedDossier.stats.documents_missing} pièce(s) à suivre
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded-full border-none shadow-none",
+                        selectedProject.kind === 'vente'
+                          ? "bg-sky-100 text-sky-700"
+                          : "bg-emerald-100 text-emerald-700"
+                      )}
+                    >
+                      PROJET {selectedProject.kind === 'achat' ? 'ACHAT' : 'VENTE'}
+                    </Badge>
+                    <span className="font-bold text-foreground">{selectedProject.display_title || selectedProject.title}</span>
+                    {selectedProject.stage && (
+                      <Badge variant="secondary" className="bg-primary/10 text-primary border-none rounded-full text-[10px] font-bold">
+                        {selectedProject.stage}
                       </Badge>
-                    ) : null}
+                    )}
                   </div>
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    {[selectedDossier.client_profile?.first_name, selectedDossier.client_profile?.last_name].filter(Boolean).join(' ') || selectedDossier.client_profile?.email || 'Client non renseigné'}
-                  </p>
+                  <Button variant="ghost" size="sm" onClick={() => setProjectId('none')} className="h-6 text-[10px] text-muted-foreground hover:text-foreground">
+                    Détacher
+                  </Button>
                 </div>
               ) : null}
 
-              {/* Chat Messages Shadcn Style */}
-              <div className="flex-1 overflow-y-auto space-y-6 pr-2 scrollbar-thin scrollbar-thumb-slate-200">
+              {/* Chat Messages */}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-2">
                 {messages.map((message, index) => {
                   const isUser = message.role === 'user'
                   return (
                     <div key={`${message.role}-${index}`} className={cn("flex w-full gap-3", isUser ? "justify-end" : "justify-start")}>
                       {!isUser && (
-                        <Avatar className="h-8 w-8 shrink-0 mt-0.5 shadow-sm">
-                          <AvatarFallback className="bg-[#00A0E2]/10 text-[#00A0E2]"><Bot className="h-4 w-4" /></AvatarFallback>
+                        <Avatar className="size-8 shrink-0 mt-0.5">
+                          <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs"><Bot className="size-4" /></AvatarFallback>
                         </Avatar>
                       )}
                       <div className={cn(
-                        "max-w-[75%] rounded-2xl px-5 py-3 text-sm leading-6 shadow-sm",
+                        "max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-xs",
                         isUser 
-                          ? "bg-slate-900 text-white rounded-tr-sm" 
-                          : "border border-slate-100 bg-white text-slate-700 rounded-tl-sm"
+                          ? "bg-primary text-primary-foreground font-medium rounded-tr-xs" 
+                          : "border bg-card text-foreground font-medium rounded-tl-xs"
                       )}>
                         <p className="whitespace-pre-wrap">{message.content}</p>
                       </div>
                       {isUser && (
-                        <Avatar className="h-8 w-8 shrink-0 mt-0.5 shadow-sm">
-                          <AvatarFallback className="bg-slate-100 text-slate-600"><User className="h-4 w-4" /></AvatarFallback>
+                        <Avatar className="size-8 shrink-0 mt-0.5">
+                          <AvatarFallback className="bg-muted text-muted-foreground font-bold text-xs"><User className="size-4" /></AvatarFallback>
                         </Avatar>
                       )}
                     </div>
@@ -295,118 +278,207 @@ export function AssistantWorkspace() {
                 })}
                 {sending ? (
                   <div className="flex w-full gap-3 justify-start">
-                    <Avatar className="h-8 w-8 shrink-0 mt-0.5 shadow-sm">
-                      <AvatarFallback className="bg-[#00A0E2]/10 text-[#00A0E2]"><Bot className="h-4 w-4" /></AvatarFallback>
+                    <Avatar className="size-8 shrink-0 mt-0.5">
+                      <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs"><Bot className="size-4" /></AvatarFallback>
                     </Avatar>
-                    <div className="max-w-[75%] rounded-2xl rounded-tl-sm px-5 py-3 text-sm leading-6 border border-slate-100 bg-white text-slate-700 shadow-sm flex items-center gap-3">
-                      <Loader2 className="h-4 w-4 animate-spin text-[#00A0E2]" />
-                      <span className="text-slate-500 font-medium">L’assistant prépare une réponse...</span>
+                    <div className="max-w-[80%] rounded-2xl rounded-tl-xs px-4 py-3 text-sm border bg-card text-muted-foreground shadow-xs flex items-center gap-2.5 font-medium">
+                      <Loader2 className="size-4 animate-spin text-primary" />
+                      <span>L’assistant prépare une réponse...</span>
                     </div>
                   </div>
                 ) : null}
               </div>
 
               {/* Chat Input */}
-              <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] border-t border-slate-100 pt-5">
+              <div className="mt-4 flex items-center gap-2 border-t pt-4">
                 <Textarea
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  placeholder="Ex : Prépare une relance pour les documents manquants..."
-                  className="min-h-16 rounded-2xl border-slate-200 bg-slate-50 focus-visible:ring-[#00A0E2]/20 focus-visible:border-[#00A0E2] resize-none px-4 py-3 text-sm shadow-inner"
+                  placeholder={selectedProject ? `Poser une question sur le projet ${selectedProject.display_title || selectedProject.title}...` : "Posez une question à l'assistant..."}
+                  className="min-h-11 max-h-24 rounded-xl bg-background border-border focus-visible:ring-primary/20 resize-none px-3.5 py-2.5 text-sm outline-none"
                   onKeyDown={(event) => {
-                    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') void sendMessage()
+                    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                      event.preventDefault()
+                      void sendMessage()
+                    }
                   }}
                 />
                 <Button 
                   onClick={() => void sendMessage()} 
                   disabled={sending || !input.trim()}
-                  className="h-full min-h-16 rounded-2xl bg-[#00A0E2] hover:bg-[#008AC5] text-white shadow-md transition-all active:scale-95 px-6"
+                  className="h-10 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-4 text-xs shadow-xs shrink-0"
                 >
-                  {sending ? <Loader2 className="animate-spin size-5" /> : <Send className="size-5" />}
-                  <span className="ml-2 font-bold">Envoyer</span>
+                  {sending ? <Loader2 className="animate-spin size-4" /> : <Send className="size-4" />}
+                  <span className="ml-1.5 hidden sm:inline">Envoyer</span>
                 </Button>
               </div>
             </div>
           </div>
 
-          {/* Right Sidebar */}
-          <aside className="flex flex-col gap-6">
-            <div className="bg-white rounded-3xl border border-emerald-100 shadow-sm p-6 overflow-hidden flex flex-col h-[520px]">
-              <div className="flex items-center gap-3 mb-5 border-b border-slate-100 pb-4">
-                <div className="bg-emerald-50 p-2.5 rounded-2xl">
-                  <Sparkles className="size-5 text-emerald-600" />
+          {/* Right Column / Sidebar */}
+          <div className="space-y-6 lg:col-span-4">
+            {/* Sélection du Projet */}
+            <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-4 flex flex-col h-[380px]">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="size-4 text-primary" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">PROJET RATTACHÉ</h2>
                 </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-900">File de validation</h2>
-                  <p className="text-xs text-slate-500">Rien ne part sans validation.</p>
-                </div>
+                {projectId !== 'none' && (
+                  <Button variant="ghost" size="sm" onClick={() => setProjectId('none')} className="h-6 text-[10px] text-muted-foreground hover:text-foreground">
+                    Détacher
+                  </Button>
+                )}
               </div>
-              
-              <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin scrollbar-thumb-slate-200">
-                {actions.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center flex flex-col items-center gap-2">
-                    <CheckCircle2 className="size-8 text-slate-300" />
-                    <span className="text-sm font-medium text-slate-500">Aucune action en attente.</span>
-                  </div>
-                ) : actions.map((action) => (
-                  <div key={action.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-900">{action.title}</p>
-                        <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500">{action.description ?? action.action_type}</p>
+
+              {/* Filter Chips: Tout, Ventes, Achats */}
+              <div className="flex items-center gap-1 rounded-full bg-secondary/50 p-1">
+                <Button
+                  variant={projectKindFilter === 'all' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setProjectKindFilter('all')}
+                  className="h-7 flex-1 rounded-full text-xs font-bold"
+                >
+                  <Layers className="mr-1 size-3" /> Tout
+                </Button>
+                <Button
+                  variant={projectKindFilter === 'vente' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setProjectKindFilter('vente')}
+                  className="h-7 flex-1 rounded-full text-xs font-bold"
+                >
+                  <Home className="mr-1 size-3" /> Ventes
+                </Button>
+                <Button
+                  variant={projectKindFilter === 'achat' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setProjectKindFilter('achat')}
+                  className="h-7 flex-1 rounded-full text-xs font-bold"
+                >
+                  <Search className="mr-1 size-3" /> Achats
+                </Button>
+              </div>
+
+              {/* Select Dropdown to choose a project */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Choisir un projet</span>
+                <Select value={projectId} onValueChange={setProjectId}>
+                  <SelectTrigger className="h-10 text-xs rounded-xl w-full font-medium">
+                    <SelectValue placeholder="Sélectionner un projet..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none" className="text-xs font-medium">Aucun projet (conversation générale)</SelectItem>
+                    {filteredProjects.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs font-medium">
+                        [{p.kind === 'achat' ? 'ACHAT' : 'VENTE'}] {p.display_title || p.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Active Project details & Quick prompt button */}
+              <div className="flex-1 overflow-y-auto space-y-3 pt-1">
+                {selectedProject ? (
+                  <div className="rounded-xl border bg-muted/40 p-3.5 space-y-2.5">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "font-bold uppercase text-[10px] tracking-wider px-2.5 py-0.5 rounded-full border-none shadow-none",
+                            selectedProject.kind === 'vente'
+                              ? "bg-sky-100 text-sky-700"
+                              : "bg-emerald-100 text-emerald-700"
+                          )}
+                        >
+                          PROJET {selectedProject.kind === 'achat' ? 'ACHAT' : 'VENTE'}
+                        </Badge>
+                        {selectedProject.stage && (
+                          <Badge variant="secondary" className="bg-primary/10 text-primary border-none rounded-full px-2 py-0.5 text-[10px] font-bold">
+                            {selectedProject.stage}
+                          </Badge>
+                        )}
                       </div>
-                      <RiskBadge risk={action.risk_level} />
+                      <h3 className="font-bold text-xs text-foreground pt-1 truncate">{selectedProject.display_title || selectedProject.title}</h3>
                     </div>
-                    <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
-                      <Clock3 className="size-3.5" /> {new Date(action.created_at).toLocaleString('fr-FR')}
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button size="sm" variant="outline" className="h-8 text-xs rounded-lg flex-1 border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700" onClick={() => void actOnAction(action.id, 'approve')} disabled={busyAction === `${action.id}:approve`}>
-                        {busyAction === `${action.id}:approve` ? <Loader2 className="animate-spin size-3 mr-1.5" /> : <CheckCircle2 className="size-3 mr-1.5" />}
-                        Approuver
-                      </Button>
-                      <Button size="sm" className="h-8 text-xs rounded-lg flex-1 bg-slate-900 hover:bg-slate-800 text-white" onClick={() => void actOnAction(action.id, 'execute')} disabled={busyAction === `${action.id}:execute`}>
-                        {busyAction === `${action.id}:execute` ? <Loader2 className="animate-spin size-3 mr-1.5" /> : <Play className="size-3 mr-1.5 fill-current" />}
-                        Exécuter
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 text-xs rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => void actOnAction(action.id, 'reject')} disabled={busyAction === `${action.id}:reject`}>
-                        {busyAction === `${action.id}:reject` ? <Loader2 className="animate-spin size-3 mr-1.5" /> : <X className="size-3 mr-1.5" />}
-                        Rejeter
-                      </Button>
-                    </div>
+
+                    <Button
+                      onClick={() => {
+                        const title = selectedProject.display_title || selectedProject.title
+                        setInput(`Fais-moi une analyse complète du projet ${selectedProject.kind === 'achat' ? 'd’achat' : 'de vente'} "${title}" (prochaines étapes et recommandations).`)
+                      }}
+                      className="w-full h-8 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[11px] font-bold shadow-xs"
+                    >
+                      <Sparkles className="mr-1.5 size-3" /> Interroger l’IA sur ce projet
+                    </Button>
                   </div>
-                ))}
+                ) : (
+                  <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground flex flex-col items-center gap-1.5">
+                    <FolderOpen className="size-5 text-muted-foreground/60" />
+                    <span>Sélectionnez un projet de vente ou d'achat ci-dessus.</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-slate-50 p-2 rounded-xl">
-                  <FileCheck2 className="size-4 text-slate-600" />
+            {/* Historique des Conversations */}
+            <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-3 flex flex-col h-[320px]">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="size-4 text-primary" />
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">HISTORIQUE DES ÉCHANGES</h2>
                 </div>
-                <h2 className="text-sm font-bold text-slate-900">Capacités actuelles</h2>
+                <Badge variant="outline" className="text-[10px] font-bold">
+                  {threads.length}
+                </Badge>
               </div>
-              <ul className="grid gap-2.5 text-xs text-slate-500 font-medium">
-                <li className="flex items-start gap-2"><div className="mt-1 size-1.5 rounded-full bg-[#00A0E2]" /> Choix fournisseur IA et modèle</li>
-                <li className="flex items-start gap-2"><div className="mt-1 size-1.5 rounded-full bg-[#00A0E2]" /> Contexte dossier client et documents</li>
-                <li className="flex items-start gap-2"><div className="mt-1 size-1.5 rounded-full bg-[#00A0E2]" /> Actions internes en validation</li>
-                <li className="flex items-start gap-2"><div className="mt-1 size-1.5 rounded-full bg-slate-300" /> Granola classé vers dossier ou revue</li>
-                <li className="flex items-start gap-2"><div className="mt-1 size-1.5 rounded-full bg-slate-300" /> Google Workspace prêt via OAuth</li>
-              </ul>
-            </div>
-          </aside>
-        </div>
-      </div>
-    </div>
-  )
-}
 
-function RiskBadge({ risk }: { risk: AiAction['risk_level'] }) {
-  if (risk === 'high') {
-    return <Badge variant="outline" className="rounded-md border-red-200 bg-red-50 text-red-700 shadow-none"><CircleAlert className="mr-1 size-3" /> Haut</Badge>
-  }
-  if (risk === 'low') {
-    return <Badge variant="outline" className="rounded-md border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none">Bas</Badge>
-  }
-  return <Badge variant="outline" className="rounded-md border-amber-200 bg-amber-50 text-amber-700 shadow-none">Moyen</Badge>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {threads.length === 0 ? (
+                  <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">
+                    Aucune conversation enregistrée.
+                  </div>
+                ) : (
+                  threads.map((t) => {
+                    const isActive = t.id === threadId
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => selectThread(t.id)}
+                        className={cn(
+                          "rounded-xl border p-3 cursor-pointer transition-colors flex items-center justify-between gap-2 group",
+                          isActive
+                            ? "border-primary bg-primary/5 shadow-xs"
+                            : "bg-muted/40 hover:bg-muted/70 border-border/60"
+                        )}
+                      >
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <p className={cn("text-xs font-bold truncate", isActive ? "text-primary" : "text-foreground")}>
+                            {t.title || 'Conversation IA'}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground font-medium">
+                            {new Date(t.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => deleteThread(t.id, e)}
+                          className="size-7 rounded-lg opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all shrink-0"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </PageSection>
+    </PageLayout>
+  )
 }

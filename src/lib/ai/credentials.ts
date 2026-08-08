@@ -156,10 +156,19 @@ export async function getActiveAiCredential(providerId?: AiProviderId | null) {
   if (!data) return null
 
   const row = data as AiCredentialRow
+  let apiKey = ''
+  try {
+    apiKey = decryptSecret(row.encrypted_api_key)
+  } catch (decryptionErr) {
+    console.error('[getActiveAiCredential] Decryption failed:', decryptionErr)
+    await markCredentialTested(row.provider_id, false, "Clé API corrompue ou secrète serveur modifiée. Veuillez resaisir votre clé.")
+    throw new Error("La clé API IA enregistrée ne peut pas être déchiffrée. Veuillez saisir à nouveau votre clé API dans Réglages > Assistant IA.")
+  }
+
   return {
     id: row.id,
     providerId: row.provider_id,
-    apiKey: decryptSecret(row.encrypted_api_key),
+    apiKey,
     model: row.default_model || resolved.model || getProvider(row.provider_id)?.defaultModel || '',
   }
 }

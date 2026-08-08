@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "lint:strict": "rm -rf .next && tsc --noEmit",
+    "lint:design": "node scripts/check-design.mjs",
+    "lint:design:changed": "node scripts/check-design.mjs --since=origin/main",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"

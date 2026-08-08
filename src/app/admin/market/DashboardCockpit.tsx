@@ -197,7 +197,7 @@ export function DashboardCockpit() {
               </Link>
             </Button>
             <Button variant="default" size="sm" asChild>
-              <Link href="/app/leads">
+              <Link href="/app/contacts">
                 <ContactRoundIcon />
                 Ajouter un contact
               </Link>

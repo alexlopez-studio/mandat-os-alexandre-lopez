@@ -12,8 +12,8 @@ const FROM = 'MandatFinder <estimation@alexlopez-provence.fr>'
 const TO = 'alexlopez.studio@gmail.com'
 
 const db = {
-  seller_scores: () => supabaseAdmin.from('seller_scores' as unknown as never) as ReturnType<typeof supabaseAdmin.from>,
-  listings: () => supabaseAdmin.from('listings' as unknown as never) as ReturnType<typeof supabaseAdmin.from>,
+  seller_scores: () => supabaseAdmin.from('seller_scores' as unknown as never) as unknown as ReturnType<typeof supabaseAdmin.from>,
+  listings: () => supabaseAdmin.from('listings' as unknown as never) as unknown as ReturnType<typeof supabaseAdmin.from>,
 }
 
 export interface GoldenAlertResult {

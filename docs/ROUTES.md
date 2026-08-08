@@ -17,7 +17,9 @@ Ce repo porte uniquement Mandat OS et les APIs metier associees.
 | `/` | Redirection vers `/app/dashboard` |
 | `/app/dashboard` | Vue d'ensemble Mandat OS |
 | `/app/radar` | Radar vendeurs / MandatFinder |
-| `/app/leads` | Contacts vendeurs et acquereurs |
+| `/app/contacts` | Annuaire unifie : vendeurs, acquereurs, partenaires pro, reseau |
+| `/app/contacts/[id]` | Detail contact (projets rattaches + historique) |
+| `/app/leads` | Supprime — redirige vers `/app/contacts` |
 | `/app/clients` | Dossiers clients vendeurs et acquereurs |
 | `/app/clients/[id]` | Detail dossier client |
 | `/app/clients/[id]/preview` | Preview admin du portail client |
@@ -54,6 +56,9 @@ Ces routes restent conservees en redirection/rewrite pour compatibilite :
 |---------|-------|
 | `/api/admin/*` | Auth admin, bootstrap, utilisateurs |
 | `/api/market/*` | Donnees Mandat OS, opportunites, biens, clients, sync |
+| `/api/market/projects` | Liste unifiee des projets (vente + achat) pour `/app/opportunities` |
+| `/api/market/projects/[id]` | Detail et mise a jour d'un projet (etape kanban) |
+| `/api/market/contacts/search` | Annuaire contacts avec filtre de typologie |
 | `/api/ai/*` | Assistant IA et credentials |
 | `/api/jobs/*` | Jobs et crons |
 | `/api/leads/*` | Gestion des leads relies aux opportunites |

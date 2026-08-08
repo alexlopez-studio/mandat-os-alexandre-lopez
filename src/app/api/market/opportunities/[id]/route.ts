@@ -7,6 +7,7 @@ import {
   LOST_STAGE,
   SIGNED_MANDATE_STAGE,
 } from '@/lib/market/seller-opportunity'
+import { buildProjectTitle } from '@/lib/project-stages'
 import type { Database, Json } from '@/types/supabase'
 
 type OpportunitiesUpdate = Database['public']['Tables']['opportunities']['Update']
@@ -255,6 +256,69 @@ async function cloneLeadForNewProject(sourceLeadId: string): Promise<string> {
 }
 
 /**
+ * Contacts rattachés au projet.
+ * `opportunities` est une vue sur `projects` (migration 038) : PostgREST ne peut donc
+ * pas résoudre la relation vers `project_contacts`, la jointure est faite à la main.
+ */
+async function loadProjectContacts(opportunityId: string) {
+  const { data: links, error } = await supabaseAdmin
+    .from('project_contacts')
+    .select('contact_id, role, opportunity_id, buyer_criteria_id')
+    .or(`opportunity_id.eq.${opportunityId},buyer_criteria_id.eq.${opportunityId}`)
+
+  if (error) {
+    console.error('[API /market/opportunities/[id]] project_contacts error:', error)
+    return []
+  }
+
+  const contactIds = Array.from(new Set((links ?? []).map((link) => link.contact_id)))
+
+  if (contactIds.length === 0) {
+    const { data: opp } = await supabaseAdmin
+      .from('opportunities')
+      .select('lead_id')
+      .eq('id', opportunityId)
+      .maybeSingle()
+
+    if (opp?.lead_id) {
+      const { data: lead } = await supabaseAdmin
+        .from('leads')
+        .select('prospect_id, contact_id')
+        .eq('id', opp.lead_id)
+        .maybeSingle()
+
+      const assocId = (lead as any)?.contact_id ?? (lead as any)?.prospect_id
+      if (assocId) contactIds.push(assocId)
+    }
+  }
+
+  if (contactIds.length === 0) return []
+
+  const { data: contacts, error: contactsError } = await supabaseAdmin
+    .from('contacts')
+    .select('id, first_name, last_name, email, phone, types')
+    .in('id', contactIds)
+
+  if (contactsError) {
+    console.error('[API /market/opportunities/[id]] contacts error:', contactsError)
+    return []
+  }
+
+  const contactById = new Map((contacts ?? []).map((contact) => [contact.id, contact]))
+
+  if (links && links.length > 0) {
+    return links
+      .map((link) => ({ role: link.role, contacts: contactById.get(link.contact_id) ?? null }))
+      .filter((entry) => entry.contacts !== null)
+  }
+
+  return (contacts ?? []).map((contact, idx) => ({
+    role: idx === 0 && contacts.length === 1 ? 'Vendeur unique' : (idx === 0 ? 'Vendeur principal' : 'Co-vendeur'),
+    contacts: contact,
+  }))
+}
+
+/**
  * GET /api/market/opportunities/[id]
  * Détail d'une opportunité.
  */
@@ -267,7 +331,7 @@ export async function GET(
 
     const { data: opportunity, error } = await supabaseAdmin
       .from('opportunities')
-      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))')
+      .select('*')
       .eq('id', id)
       .single()
 
@@ -279,7 +343,19 @@ export async function GET(
       return NextResponse.json({ error: 'Erreur base de données' }, { status: 500 })
     }
 
-    return NextResponse.json({ opportunity: await enrichOpportunity(opportunity) })
+    const enriched = await enrichOpportunity(opportunity)
+    const projectContacts = await loadProjectContacts(id)
+    return NextResponse.json({
+      opportunity: {
+        ...enriched,
+        project_contacts: projectContacts,
+        display_title: buildProjectTitle({
+          contactLastNames: projectContacts.map((entry) => entry.contacts?.last_name),
+          contactName: opportunity.seller_name,
+          propertyType: opportunity.property_type,
+        }),
+      },
+    })
   } catch (e) {
     console.error('[API /market/opportunities/[id]] GET', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
@@ -405,7 +481,7 @@ export async function PATCH(
       .from('opportunities')
       .update(updateData)
       .eq('id', id)
-      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))')
+      .select('*')
       .single()
 
     if (error) {
@@ -445,7 +521,10 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ opportunity: await enrichOpportunity(opportunity) })
+    const enriched = await enrichOpportunity(opportunity)
+    return NextResponse.json({
+      opportunity: { ...enriched, project_contacts: await loadProjectContacts(id) },
+    })
   } catch (e) {
     console.error('[API /market/opportunities/[id]] PATCH', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

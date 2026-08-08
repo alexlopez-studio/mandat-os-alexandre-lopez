@@ -1,0 +1,36 @@
+import { Handshake, Home, Search, Users, type LucideIcon } from 'lucide-react'
+
+/**
+ * Typologies d'un contact de l'annuaire.
+ * Un contact peut en cumuler plusieurs (un vendeur peut aussi etre acquereur).
+ * `vendeur` et `acquereur` sont aussi deduits automatiquement des projets rattaches
+ * (voir la vue SQL `contacts_directory`).
+ */
+export const CONTACT_TYPES = ['vendeur', 'acquereur', 'partenaire', 'reseau'] as const
+
+export type ContactType = (typeof CONTACT_TYPES)[number]
+
+type ContactTypeMeta = {
+  label: string
+  icon: LucideIcon
+  /** Tone du composant `StatusPill` du design system. */
+  tone: 'brand' | 'success' | 'warning' | 'neutral'
+}
+
+export const CONTACT_TYPE_META: Record<ContactType, ContactTypeMeta> = {
+  vendeur: { label: 'Vendeur', icon: Home, tone: 'brand' },
+  acquereur: { label: 'Acquéreur', icon: Search, tone: 'success' },
+  partenaire: { label: 'Partenaire pro', icon: Handshake, tone: 'warning' },
+  reseau: { label: 'Réseau', icon: Users, tone: 'neutral' },
+}
+
+export function isContactType(value: unknown): value is ContactType {
+  return typeof value === 'string' && (CONTACT_TYPES as readonly string[]).includes(value)
+}
+
+/** Filtre et ordonne une liste brute de typologies selon l'ordre canonique. */
+export function normalizeContactTypes(values: unknown): ContactType[] {
+  if (!Array.isArray(values)) return []
+  const set = new Set(values.filter(isContactType))
+  return CONTACT_TYPES.filter((type) => set.has(type))
+}

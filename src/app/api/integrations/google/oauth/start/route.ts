@@ -1,16 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GOOGLE_SCOPES = [
+/**
+ * Scopes demandés au compte Google.
+ *
+ * `userinfo.email` est indispensable : sans lui l'appel `/oauth2/v2/userinfo`
+ * du callback échoue et la connexion est enregistrée sans e-mail.
+ *
+ * Pour Drive on reste volontairement sur `drive.file`, qui ne donne accès qu'aux
+ * fichiers créés ou ouverts depuis Mandat OS : c'est un scope non sensible, là
+ * où un accès Drive complet imposerait une validation Google lourde.
+ */
+export const GOOGLE_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.compose',
-  'https://www.googleapis.com/auth/drive.metadata.readonly',
-  'https://www.googleapis.com/auth/calendar.events.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+  // `drive.file` ne montre que les fichiers créés par l'app : insuffisant pour
+  // retrouver les documents clients existants, d'où `drive.readonly` qui ouvre
+  // la recherche et la lecture sur tout le Drive. Scope restreint côté Google.
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive.readonly',
 ]
 
 export async function GET(req: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID
   if (!clientId) {
-    return NextResponse.json({ success: false, error: 'GOOGLE_CLIENT_ID manquant' }, { status: 500 })
+    return NextResponse.redirect(
+      new URL('/app/settings?section=integrations&google=missing_config', req.nextUrl.origin),
+    )
   }
 
   const redirectUri = `${req.nextUrl.origin}/api/integrations/google/oauth/callback`
@@ -20,7 +39,10 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('redirect_uri', redirectUri)
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('access_type', 'offline')
+  // `consent` force Google à renvoyer un refresh_token, y compris lors d'une
+  // reconnexion : sans lui, seule la toute première autorisation en fournit un.
   url.searchParams.set('prompt', 'consent')
+  url.searchParams.set('include_granted_scopes', 'true')
   url.searchParams.set('scope', GOOGLE_SCOPES.join(' '))
   url.searchParams.set('state', state)
 

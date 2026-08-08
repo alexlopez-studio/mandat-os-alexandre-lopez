@@ -23,6 +23,17 @@ const nextConfig: NextConfig = {
         destination: '/app/settings?section=communes',
         permanent: false,
       },
+      // "Leads entrants" a ete fusionne dans l'annuaire des contacts.
+      {
+        source: '/app/leads',
+        destination: '/app/contacts',
+        permanent: false,
+      },
+      {
+        source: '/app/leads/:path*',
+        destination: '/app/contacts',
+        permanent: false,
+      },
       {
         source: '/app/dashboard/:path+',
         destination: '/app/:path*',

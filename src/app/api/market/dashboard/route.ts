@@ -37,7 +37,16 @@ type ClientDossierEvent = Pick<
 >
 type Lead = Pick<
   Database['public']['Tables']['leads']['Row'],
-  'id' | 'tool' | 'status' | 'priority' | 'next_action' | 'due_date' | 'follow_up_at' | 'commune' | 'created_at'
+  | 'id'
+  | 'tool'
+  | 'status'
+  | 'priority'
+  | 'next_action'
+  | 'due_date'
+  | 'follow_up_at'
+  | 'commune'
+  | 'created_at'
+  | 'prospect_id'
 >
 type WarmContact = Pick<
   Database['public']['Tables']['warm_contacts']['Row'],
@@ -118,7 +127,7 @@ export async function GET() {
         .limit(500),
       supabaseAdmin
         .from('leads')
-        .select('id,tool,status,priority,next_action,due_date,follow_up_at,commune,created_at')
+        .select('id,tool,status,priority,next_action,due_date,follow_up_at,commune,created_at,prospect_id')
         .is('deleted_at', null)
         .eq('is_test', false)
         .order('created_at', { ascending: false })
@@ -310,7 +319,7 @@ function actionFromLead(lead: Lead): DashboardAction {
     due_date: dueDate,
     bucket: bucketFor(dueDate),
     priority: lead.priority || lead.status,
-    href: `/app/leads/${lead.id}`,
+    href: lead.prospect_id ? `/app/contacts/${lead.prospect_id}` : '/app/contacts',
     can_complete: false,
     can_postpone: true,
     created_at: lead.created_at,
@@ -327,7 +336,7 @@ function actionFromWarmContact(contact: WarmContact): DashboardAction {
     due_date: contact.follow_up_date,
     bucket: bucketFor(contact.follow_up_date),
     priority: contact.status,
-    href: `/app/liste-chaude/${contact.id}`,
+    href: `/app/contacts/${contact.id}`,
     can_complete: true,
     can_postpone: true,
     created_at: contact.created_at,

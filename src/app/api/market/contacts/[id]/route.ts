@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { normalizeContactTypes } from '@/lib/contact-types'
+import type { Database } from '@/types/supabase'
 
 export const dynamic = 'force-dynamic'
 
@@ -89,6 +91,100 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     }, { status: 200 })
   } catch (error) {
     console.error('[API /market/contacts/[id]] error:', error)
+    return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
+  }
+}
+
+/**
+ * DELETE /api/market/contacts/[id]
+ *
+ * La suppression est cascadante en base : elle emporte les rattachements
+ * `project_contacts` et les activités portant `contact_id`. On refuse donc un
+ * contact encore rattaché à un projet tant que `?force=true` n'est pas passé,
+ * et on renvoie le décompte pour que l'interface puisse l'annoncer.
+ */
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  try {
+    const params = await props.params
+    const contactId = params.id
+    const force = new URL(req.url).searchParams.get('force') === 'true'
+
+    const { data: contact, error: contactError } = await supabaseAdmin
+      .from('contacts')
+      .select('id')
+      .eq('id', contactId)
+      .maybeSingle()
+
+    if (contactError) throw contactError
+    if (!contact) return NextResponse.json({ error: 'Contact introuvable' }, { status: 404 })
+
+    const { data: links, error: linksError } = await supabaseAdmin
+      .from('project_contacts')
+      .select('opportunity_id, buyer_criteria_id')
+      .eq('contact_id', contactId)
+
+    if (linksError) throw linksError
+
+    const projectCount = (links ?? []).length
+
+    if (projectCount > 0 && !force) {
+      return NextResponse.json(
+        {
+          error: 'Contact rattaché à des projets',
+          project_count: projectCount,
+          requires_force: true,
+        },
+        { status: 409 },
+      )
+    }
+
+    const { error } = await supabaseAdmin.from('contacts').delete().eq('id', contactId)
+
+    if (error) {
+      console.error('[API /market/contacts/[id]] DELETE error:', error)
+      return NextResponse.json({ error: 'Erreur lors de la suppression du contact' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, project_count: projectCount }, { status: 200 })
+  } catch (error) {
+    console.error('[API /market/contacts/[id]] DELETE error:', error)
+    return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  try {
+    const params = await props.params
+    const body = await req.json()
+
+    const payload: Database['public']['Tables']['contacts']['Update'] = {}
+    if ('first_name' in body) payload.first_name = body.first_name || ''
+    if ('last_name' in body) payload.last_name = body.last_name || ''
+    if ('email' in body) payload.email = body.email || null
+    if ('phone' in body) payload.phone = body.phone || null
+    if ('company' in body) payload.company = body.company || null
+    if ('relation' in body) payload.relation = body.relation || null
+    if ('types' in body) payload.types = normalizeContactTypes(body.types)
+
+    if (Object.keys(payload).length === 0) {
+      return NextResponse.json({ error: 'Aucune donnée à mettre à jour' }, { status: 400 })
+    }
+
+    const { data: contact, error } = await supabaseAdmin
+      .from('contacts')
+      .update(payload)
+      .eq('id', params.id)
+      .select('*')
+      .single()
+
+    if (error || !contact) {
+      console.error('[API /market/contacts/[id]] PATCH error:', error)
+      return NextResponse.json({ error: 'Erreur lors de la mise à jour du contact' }, { status: 500 })
+    }
+
+    return NextResponse.json({ contact }, { status: 200 })
+  } catch (error) {
+    console.error('[API /market/contacts/[id]] PATCH error:', error)
     return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
   }
 }

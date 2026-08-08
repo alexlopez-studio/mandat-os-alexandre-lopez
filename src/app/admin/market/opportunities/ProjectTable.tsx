@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import React from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { KanbanIcon, ChevronRight } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -15,171 +15,341 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-
-type ProjectType = 'vente' | 'achat'
-
-interface Project {
-  id: string
-  kind: ProjectType
-  title: string
-  stage: string
-  priority: string
-  next_action: string | null
-  due_date: string | null
-  property_city: string | null
-  property_type: string | null
-  budget_max: number | null
-  estimated_price_min: number | null
-  seller_name: string | null
-  created_at: string
-}
+import { EmptyState } from '@/components/pro'
+import {
+  projectDetailHref,
+  type ProjectRow,
+} from '@/lib/project-stages'
+import { cn } from '@/lib/utils'
 
 type ProjectTableProps = {
-  search: string
-  kindFilter: string
-  activeFilter: string
+  projects: ProjectRow[]
+  hasFilters: boolean
+  onResetFilters: () => void
+  viewMode?: 'table' | 'cards'
 }
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return '—'
-  return new Date(value).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+function formatDueDate(dueDateStr: string | null | undefined) {
+  if (!dueDateStr) return <span className="text-muted-foreground font-normal">—</span>
+  try {
+    const d = new Date(dueDateStr)
+    if (isNaN(d.getTime())) return dueDateStr
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const target = new Date(d)
+    target.setHours(0, 0, 0, 0)
+    const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
+    if (diffDays === 0) return 'Aujourd’hui'
+    if (diffDays === 1) return 'Demain'
+    if (diffDays > 1 && diffDays <= 7) return 'Cette semaine'
+    if (diffDays < 0) return <span className="text-destructive font-bold">En retard</span>
+    
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+  } catch {
+    return dueDateStr
+  }
 }
 
-function formatPrice(value: number | null | undefined) {
-  if (value == null) return null
-  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(value)
-}
-
-function dueBucket(value: string | null | undefined) {
-  if (!value) return 'no_due'
-  const due = new Date(value)
-  if (Number.isNaN(due.getTime())) return 'no_due'
-  const today = new Date()
-  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate())
-  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const diffDays = Math.round((dueDay.getTime() - todayDay.getTime()) / 86_400_000)
-  if (diffDays < 0) return 'overdue'
-  if (diffDays === 0) return 'today'
-  if (diffDays <= 7) return 'week'
-  return 'later'
-}
-
-function dueClass(value: string | null | undefined) {
-  const bucket = dueBucket(value)
-  if (bucket === 'overdue') return 'text-red-700'
-  if (bucket === 'today') return 'text-amber-700'
-  if (bucket === 'week') return 'text-blue-700'
-  return 'text-muted-foreground'
-}
-
-export function ProjectTable({ search, kindFilter, activeFilter }: ProjectTableProps) {
+export function ProjectTable({ projects, hasFilters, onResetFilters, viewMode = 'cards' }: ProjectTableProps) {
   const router = useRouter()
-  const [rows, setRows] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let active = true
-    async function load() {
-      setLoading(true)
-      try {
-        const url = new URL('/api/market/projects', window.location.origin)
-        url.searchParams.set('search', search)
-        url.searchParams.set('kind', kindFilter)
-        url.searchParams.set('active', activeFilter)
+  if (projects.length === 0) {
+    return (
+      <EmptyState
+        icon={KanbanIcon}
+        title="Aucun projet trouvé"
+        description={
+          hasFilters
+            ? 'Modifiez la recherche ou les filtres pour élargir les résultats.'
+            : 'Créez votre premier projet pour alimenter le pipeline.'
+        }
+        action={
+          hasFilters ? (
+            <Button variant="outline" onClick={onResetFilters} className="rounded-full">
+              Réinitialiser les filtres
+            </Button>
+          ) : (
+            <Button asChild className="rounded-full">
+              <Link href="/admin/market/opportunities/nouveau">Nouveau projet</Link>
+            </Button>
+          )
+        }
+      />
+    )
+  }
 
-        const res = await fetch(url)
-        const data = await res.json()
-        if (!res.ok) throw new Error(data.error ?? 'Chargement impossible')
-        if (active) setRows(data.projects ?? [])
-      } catch (error) {
-        console.error('Erreur chargement projets', error)
-        toast.error('Impossible de charger les projets')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    void load()
-    return () => {
-      active = false
-    }
-  }, [search, kindFilter, activeFilter])
+  if (viewMode === 'cards') {
+    return (
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {projects.map((project) => {
+          const href = projectDetailHref(project)
+          const title = project.display_title ?? project.title
+          const city = project.property_city || (project.communes ?? [])[0] || 'Brignoles'
+          const contacts = project.contacts ?? []
+          const priority = (project.priority || '').toLowerCase()
+
+          return (
+            <div
+              key={project.id}
+              onClick={href ? () => router.push(href) : undefined}
+              className="rounded-2xl border bg-card p-5 shadow-xs hover:border-primary/40 transition-all cursor-pointer flex flex-col justify-between space-y-4"
+            >
+              <div className="space-y-3">
+                {/* Header Badge Row */}
+                <div className="flex items-center justify-between gap-2">
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "font-bold uppercase text-[10px] tracking-wider px-2.5 py-0.5 rounded-full border-none shadow-none",
+                      project.kind === 'vente'
+                        ? "bg-sky-100 text-sky-700"
+                        : "bg-emerald-100 text-emerald-700"
+                    )}
+                  >
+                    PROJET {project.kind === 'achat' ? 'ACHAT' : 'VENTE'}
+                  </Badge>
+
+                  <Badge
+                    variant="secondary"
+                    className="font-bold text-xs bg-primary/10 text-primary border-none rounded-full px-2.5 py-0.5"
+                  >
+                    {project.stage || 'Projet'}
+                  </Badge>
+                </div>
+
+                {/* Title & Location */}
+                <div>
+                  <h3 className="text-base font-bold text-foreground line-clamp-1 hover:text-primary transition-colors">
+                    {title}
+                  </h3>
+                  <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                    📍 {city}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bottom Card Footer */}
+              <div className="pt-3 border-t flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {/* Contacts Avatars */}
+                  {contacts.length > 0 ? (
+                    <div className="flex items-center -space-x-2">
+                      {contacts.slice(0, 3).map((c, i) => {
+                        const nameParts = c.name.split(' ').filter(Boolean)
+                        const initials = nameParts.length >= 2 
+                          ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+                          : c.name.slice(0, 2).toUpperCase()
+                        const colors = [
+                          'bg-sky-600 text-sky-50',
+                          'bg-slate-700 text-slate-50',
+                          'bg-amber-700 text-amber-50',
+                          'bg-emerald-700 text-emerald-50',
+                        ]
+                        return (
+                          <div
+                            key={c.id || i}
+                            title={`${c.name}${c.role ? ` (${c.role})` : ''}`}
+                            className={cn(
+                              "size-7 flex items-center justify-center rounded-full text-[10px] font-bold ring-2 ring-card shadow-xs",
+                              colors[i % colors.length]
+                            )}
+                          >
+                            {initials}
+                          </div>
+                        )
+                      })}
+                      {contacts.length > 3 && (
+                        <div className="size-7 flex items-center justify-center rounded-full bg-muted text-muted-foreground text-[10px] font-bold ring-2 ring-card">
+                          +{contacts.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">Aucun contact</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {priority === 'haute' || priority === 'high' ? (
+                    <Badge variant="destructive" className="text-[10px] font-bold rounded-full">Urgent</Badge>
+                  ) : null}
+                  <Button variant="ghost" size="sm" className="text-xs font-semibold text-primary hover:text-primary/80 p-0 h-auto">
+                    Ouvrir <ChevronRight className="ml-0.5 size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-        <Table className="min-w-[980px]">
-          <TableHeader>
-            <TableRow className="bg-muted/40 hover:bg-muted/40">
-              <TableHead>Type</TableHead>
-              <TableHead>Titre</TableHead>
-              <TableHead>Statut</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Secteur / Bien</TableHead>
-              <TableHead>Prix / Budget</TableHead>
-              <TableHead>Prochaine action</TableHead>
-              <TableHead>Échéance</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center">
-                  <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                  Aucun projet trouvé
-                </TableCell>
-              </TableRow>
-            ) : (
-              rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  className="cursor-pointer group"
-                  onClick={() => router.push(`/app/opportunities/${row.id}`)}
-                >
-                  <TableCell>
-                    <Badge variant="outline" className={row.kind === 'vente' ? 'text-blue-600 bg-blue-50' : 'text-emerald-600 bg-emerald-50'}>
-                      {row.kind === 'vente' ? 'Vente' : 'Achat'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-medium max-w-[200px] truncate" title={row.title}>
-                    {row.title}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="font-normal text-xs">
-                      {row.stage || 'Nouveau'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {row.seller_name ? (
-                      <span className="text-sm font-medium">{row.seller_name}</span>
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xs">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/40 hover:bg-muted/40 border-b">
+            <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              PROJET & COMMUNE
+            </TableHead>
+            <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              TYPE
+            </TableHead>
+            <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              CONTACTS
+            </TableHead>
+            <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              ÉTAPE
+            </TableHead>
+            <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              PROCHAINE ACTION
+            </TableHead>
+            <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              ÉCHÉANCE
+            </TableHead>
+            <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              PRIORITÉ
+            </TableHead>
+            <TableHead className="w-8" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {projects.map((project) => {
+            const href = projectDetailHref(project)
+            const title = project.display_title ?? project.title
+            const city = project.property_city || (project.communes ?? [])[0] || '—'
+            const contacts = project.contacts ?? []
+            const priority = (project.priority || '').toLowerCase()
+
+            return (
+              <TableRow
+                key={project.id}
+                onClick={href ? () => router.push(href) : undefined}
+                className={cn('transition-colors hover:bg-muted/30', href && 'cursor-pointer')}
+              >
+                {/* PROJET & COMMUNE */}
+                <TableCell className="py-4">
+                  <div className="flex flex-col min-w-0 max-w-xs">
+                    {href ? (
+                      <Link
+                        href={href}
+                        className="truncate font-bold text-foreground hover:text-primary transition-colors text-sm"
+                        onClick={(event) => event.stopPropagation()}
+                        title={title}
+                      >
+                        {title}
+                      </Link>
                     ) : (
-                      <span className="text-xs text-muted-foreground">Aucun contact</span>
+                      <span className="truncate font-bold text-foreground text-sm" title={title}>
+                        {title}
+                      </span>
                     )}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {[row.property_type, row.property_city].filter(Boolean).join(' · ') || '—'}
-                  </TableCell>
-                  <TableCell className="text-sm font-medium">
-                    {formatPrice(row.estimated_price_min || row.budget_max) || '—'}
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate text-sm" title={row.next_action || ''}>
-                    {row.next_action || <span className="text-muted-foreground">—</span>}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    <span className={`text-sm font-medium ${dueClass(row.due_date)}`}>
-                      {formatDate(row.due_date)}
+                    <span className="text-xs text-muted-foreground truncate font-normal mt-0.5">
+                      📍 {city}
                     </span>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                  </div>
+                </TableCell>
+
+                {/* TYPE */}
+                <TableCell className="py-4">
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "font-bold uppercase text-[10px] tracking-wider px-2.5 py-0.5 rounded-full border-none shadow-none",
+                      project.kind === 'vente'
+                        ? "bg-sky-100 text-sky-700"
+                        : "bg-emerald-100 text-emerald-700"
+                    )}
+                  >
+                    {project.kind}
+                  </Badge>
+                </TableCell>
+
+                {/* CONTACTS */}
+                <TableCell className="py-4">
+                  {contacts.length > 0 ? (
+                    <div className="flex items-center -space-x-2 overflow-hidden">
+                      {contacts.slice(0, 3).map((c, i) => {
+                        const nameParts = c.name.split(' ').filter(Boolean)
+                        const initials = nameParts.length >= 2 
+                          ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+                          : c.name.slice(0, 2).toUpperCase()
+                        const bgColors = [
+                          'bg-sky-600 text-white',
+                          'bg-slate-700 text-white',
+                          'bg-amber-700 text-white',
+                          'bg-emerald-700 text-white',
+                        ]
+                        const colorClass = bgColors[i % bgColors.length]
+                        return (
+                          <div
+                            key={c.id || i}
+                            title={`${c.name}${c.role ? ` (${c.role})` : ''}`}
+                            className={cn(
+                              "inline-flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ring-2 ring-background shadow-none",
+                              colorClass
+                            )}
+                          >
+                            {initials}
+                          </div>
+                        )
+                      })}
+                      {contacts.length > 3 && (
+                        <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground text-xs font-bold ring-2 ring-background">
+                          +{contacts.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+
+                {/* ÉTAPE */}
+                <TableCell className="py-4 text-sm font-semibold text-primary whitespace-nowrap">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary border-none rounded-full px-2.5 py-0.5 text-xs font-bold">
+                    {project.stage || '—'}
+                  </Badge>
+                </TableCell>
+
+                {/* PROCHAINE ACTION */}
+                <TableCell className="py-4 text-sm text-muted-foreground max-w-xs truncate">
+                  {project.next_action || '—'}
+                </TableCell>
+
+                {/* ÉCHÉANCE */}
+                <TableCell className="py-4 text-sm font-semibold text-foreground whitespace-nowrap">
+                  {formatDueDate(project.due_date)}
+                </TableCell>
+
+                {/* PRIORITÉ */}
+                <TableCell className="py-4 whitespace-nowrap">
+                  {priority === 'haute' || priority === 'high' ? (
+                    <span className="text-xs font-bold text-destructive uppercase tracking-wider">HAUTE</span>
+                  ) : priority === 'moyenne' || priority === 'medium' ? (
+                    <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">MOYENNE</span>
+                  ) : priority === 'basse' || priority === 'low' ? (
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">BASSE</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+
+                {/* ACTION ICON */}
+                <TableCell className="py-4 text-right">
+                  {href ? (
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                      <ChevronRight className="size-4" aria-hidden="true" />
+                    </Button>
+                  ) : null}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
     </div>
   )
 }

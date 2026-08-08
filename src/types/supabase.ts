@@ -93,7 +93,10 @@ export type Database = {
           last_name: string
           email: string | null
           phone: string | null
+          company: string | null
+          relation: string | null
           source: string
+          types: string[]
           created_at: string
           updated_at: string
         }
@@ -103,7 +106,10 @@ export type Database = {
           last_name?: string
           email?: string | null
           phone?: string | null
+          company?: string | null
+          relation?: string | null
           source?: string
+          types?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -113,7 +119,10 @@ export type Database = {
           last_name?: string
           email?: string | null
           phone?: string | null
+          company?: string | null
+          relation?: string | null
           source?: string
+          types?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -1058,6 +1067,155 @@ export type Database = {
             referencedColumns: ['id']
           },
         ]
+      }
+      // Table reelle du modele unifie (migration 036). Les tables `opportunities`
+      // et `buyer_criteria` ci-dessous en sont des vues de compatibilite.
+      projects: {
+        Row: {
+          id: string
+          kind: 'vente' | 'achat'
+          title: string
+          stage: string
+          priority: string
+          next_action: string | null
+          due_date: string | null
+          lead_id: string | null
+          follow_up_at: string | null
+          is_test: boolean
+          market_property_id: string | null
+          description: string | null
+          signal_type: string | null
+          note: string | null
+          seller_name: string | null
+          seller_phone: string | null
+          seller_email: string | null
+          source_channel: string | null
+          property_address: string | null
+          property_city: string | null
+          property_zipcode: string | null
+          property_type: string | null
+          property_surface: number | null
+          property_land_surface: number | null
+          property_rooms: number | null
+          estimated_price_min: number | null
+          estimated_price_max: number | null
+          selling_timeline: string | null
+          pre_estimation_done_at: string | null
+          visit_at: string | null
+          report_delivered_at: string | null
+          property_snapshot: Record<string, unknown>
+          professional_opinion: Record<string, unknown>
+          internal_intel: Record<string, unknown>
+          created_from: string | null
+          prospect_id: string | null
+          type_bien: string | null
+          communes: string[] | null
+          budget_max: number | null
+          surface_min: number | null
+          pieces_min: number | null
+          criteres: string[] | null
+          active: boolean | null
+          matched_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          kind: 'vente' | 'achat'
+          title: string
+          stage: string
+          priority?: string
+          next_action?: string | null
+          due_date?: string | null
+          lead_id?: string | null
+          follow_up_at?: string | null
+          is_test?: boolean
+          market_property_id?: string | null
+          description?: string | null
+          signal_type?: string | null
+          note?: string | null
+          seller_name?: string | null
+          seller_phone?: string | null
+          seller_email?: string | null
+          source_channel?: string | null
+          property_address?: string | null
+          property_city?: string | null
+          property_zipcode?: string | null
+          property_type?: string | null
+          property_surface?: number | null
+          property_land_surface?: number | null
+          property_rooms?: number | null
+          estimated_price_min?: number | null
+          estimated_price_max?: number | null
+          selling_timeline?: string | null
+          pre_estimation_done_at?: string | null
+          visit_at?: string | null
+          report_delivered_at?: string | null
+          property_snapshot?: Record<string, unknown>
+          professional_opinion?: Record<string, unknown>
+          internal_intel?: Record<string, unknown>
+          created_from?: string | null
+          prospect_id?: string | null
+          type_bien?: string | null
+          communes?: string[] | null
+          budget_max?: number | null
+          surface_min?: number | null
+          pieces_min?: number | null
+          criteres?: string[] | null
+          active?: boolean | null
+          matched_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          kind?: 'vente' | 'achat'
+          title?: string
+          stage?: string
+          priority?: string
+          next_action?: string | null
+          due_date?: string | null
+          lead_id?: string | null
+          follow_up_at?: string | null
+          is_test?: boolean
+          market_property_id?: string | null
+          description?: string | null
+          signal_type?: string | null
+          note?: string | null
+          seller_name?: string | null
+          seller_phone?: string | null
+          seller_email?: string | null
+          source_channel?: string | null
+          property_address?: string | null
+          property_city?: string | null
+          property_zipcode?: string | null
+          property_type?: string | null
+          property_surface?: number | null
+          property_land_surface?: number | null
+          property_rooms?: number | null
+          estimated_price_min?: number | null
+          estimated_price_max?: number | null
+          selling_timeline?: string | null
+          pre_estimation_done_at?: string | null
+          visit_at?: string | null
+          report_delivered_at?: string | null
+          property_snapshot?: Record<string, unknown>
+          professional_opinion?: Record<string, unknown>
+          internal_intel?: Record<string, unknown>
+          created_from?: string | null
+          prospect_id?: string | null
+          type_bien?: string | null
+          communes?: string[] | null
+          budget_max?: number | null
+          surface_min?: number | null
+          pieces_min?: number | null
+          criteres?: string[] | null
+          active?: boolean | null
+          matched_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       opportunities: {
         Row: {
@@ -2045,7 +2203,25 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      contacts_directory: {
+        Row: {
+          id: string
+          first_name: string
+          last_name: string
+          email: string | null
+          phone: string | null
+          company: string | null
+          relation: string | null
+          source: string
+          types: string[]
+          created_at: string
+          updated_at: string
+          /** Typologies saisies + typologies deduites des projets rattaches. */
+          all_types: string[]
+          projects_count: number
+        }
+        Relationships: []
+      }
     }
     Functions: {
       dvf_serie_annuelle: {

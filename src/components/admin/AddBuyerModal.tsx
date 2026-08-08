@@ -107,7 +107,7 @@ export function AddBuyerModal({ onBuyerAdded, onBuyerSelected }: AddBuyerModalPr
       resetForm()
 
       if (onBuyerAdded) onBuyerAdded()
-      if (data.buyer && onBuyerSelected) onBuyerSelected(data.buyer.lead_id)
+      if (data.buyer && onBuyerSelected) onBuyerSelected(data.buyer.lead_id || data.buyer.id)
     } catch (e) {
       console.error('Erreur création acheteur:', e)
       toast.error('Erreur serveur')

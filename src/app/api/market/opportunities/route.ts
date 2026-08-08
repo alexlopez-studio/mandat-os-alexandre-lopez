@@ -277,6 +277,7 @@ export async function POST(req: NextRequest) {
       ? body.lead_id
       : null
 
+    const contactIdsPayload: string[] = Array.isArray(body.contact_ids) ? body.contact_ids.filter(Boolean) : []
     const contactIdPayload = typeof body.contact_id === 'string' && body.contact_id
       ? body.contact_id
       : null
@@ -388,7 +389,7 @@ export async function POST(req: NextRequest) {
         } : {}),
         ...buildSellerPayload(body),
       })
-      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))')
+      .select('*')
       .single()
 
     if (error) {
@@ -397,51 +398,119 @@ export async function POST(req: NextRequest) {
     }
 
     // Lot 2: Link contact to opportunity
-    let finalContactId = contactIdPayload
-    
-    // Si on a un leadId (ancien mode) on peut essayer de retrouver son contact associé, 
-    // ou si on a explicitement demandé de créer un contact (new mode)
-    if (!finalContactId && body.create_contact) {
-      const c = body.contact as any
-      const { data: newContact, error: contactError } = await supabaseAdmin
-        .from('contacts')
-        .insert({
-          first_name: c?.first_name || 'Inconnu',
-          last_name: c?.last_name || '',
-          email: c?.email || null,
-          phone: c?.phone || null,
-          source: 'opportunity'
-        })
-        .select()
-        .single()
-      
-      if (!contactError && newContact) {
-        finalContactId = newContact.id
-      }
+    let contactLinkWarning: string | null = null
+    const finalContactIds: string[] = [...contactIdsPayload]
+    if (contactIdPayload && !finalContactIds.includes(contactIdPayload)) {
+      finalContactIds.push(contactIdPayload)
     }
+    
+    // Si on a demandé de créer un contact (nouveau mode)
+    if (finalContactIds.length === 0 && (body.create_contact || body.contact || body.first_name || body.last_name)) {
+      const c = (body.contact as any) || body
+      const firstName = (c?.first_name || c?.firstName || '').toString().trim()
+      const lastName = (c?.last_name || c?.lastName || '').toString().trim()
+      const email = (c?.email || '').toString().trim() || null
+      const phone = (c?.phone || '').toString().trim() || null
 
-    if (finalContactId) {
-      const { error: pcError } = await supabaseAdmin
-        .from('project_contacts')
-        .insert({
-          contact_id: finalContactId,
-          opportunity_id: opportunity.id,
-          role: 'Vendeur unique'
-        })
+      if (firstName || lastName || email || phone) {
+        const { data: newContact, error: contactError } = await supabaseAdmin
+          .from('contacts')
+          .insert({
+            first_name: firstName || 'Inconnu',
+            last_name: lastName || '',
+            email,
+            phone,
+            source: 'opportunity',
+          })
+          .select()
+          .single()
         
-      if (!pcError) {
-        const { data: pcData } = await supabaseAdmin
-          .from('project_contacts')
-          .select('role, contacts(id, first_name, last_name, email, phone)')
-          .eq('opportunity_id', opportunity.id)
-          
-        if (pcData) {
-          opportunity.project_contacts = pcData
+        if (contactError) {
+          console.error('[API /market/opportunities] contact insert error:', contactError)
+        } else if (newContact) {
+          finalContactIds.push(newContact.id)
         }
       }
     }
 
-    return NextResponse.json({ opportunity }, { status: 201 })
+    // Fallback : retrouver le contact du lead si leadId existe
+    if (finalContactIds.length === 0 && leadId) {
+      const { data: lead } = await supabaseAdmin
+        .from('leads')
+        .select('prospect_id, contact_id')
+        .eq('id', leadId)
+        .maybeSingle()
+
+      const assocContactId = (lead as any)?.contact_id ?? (lead as any)?.prospect_id
+      if (assocContactId && !finalContactIds.includes(assocContactId)) {
+        finalContactIds.push(assocContactId)
+      }
+    }
+
+    if (finalContactIds.length > 0) {
+      const inserts = finalContactIds.map((id, index) => ({
+        contact_id: id,
+        opportunity_id: opportunity.id,
+        role: index === 0 && finalContactIds.length === 1 ? 'Vendeur unique' : (index === 0 ? 'Vendeur principal' : 'Co-vendeur')
+      }))
+      const { error: pcError } = await supabaseAdmin
+        .from('project_contacts')
+        .insert(inserts)
+
+      if (pcError) {
+        // Ne jamais masquer l'échec : sans ces lignes le projet est créé sans
+        // aucun contact rattaché, et la fiche projet apparaît vide.
+        console.error('[API /market/opportunities] project_contacts insert error:', pcError)
+        contactLinkWarning = 'Projet créé mais rattachement des contacts impossible'
+      }
+
+      // Jointure manuelle explicite pour éviter le problème d'embedded relation PostgREST sur la vue
+      const { data: contactsData } = await supabaseAdmin
+        .from('contacts')
+        .select('id, first_name, last_name, email, phone')
+        .in('id', finalContactIds)
+
+      if (contactsData && contactsData.length > 0) {
+        const contactMap = new Map(contactsData.map((c) => [c.id, c]))
+
+        if (!pcError) {
+          const pcList = finalContactIds
+            .map((id, index) => ({
+              role: index === 0 && finalContactIds.length === 1 ? 'Vendeur unique' : (index === 0 ? 'Vendeur principal' : 'Co-vendeur'),
+              contacts: contactMap.get(id) ?? null,
+            }))
+            .filter((entry) => entry.contacts !== null)
+
+          ;(opportunity as any).project_contacts = pcList
+        }
+
+        // Le vendeur affiché est le premier contact *sélectionné*, pas le premier
+        // renvoyé par la base (l'ordre du `.in()` n'est pas garanti).
+        const firstContact = contactMap.get(finalContactIds[0]) ?? contactsData[0]
+        if (firstContact) {
+          const sellerName = [firstContact.first_name, firstContact.last_name].filter(Boolean).join(' ').trim()
+          if (sellerName) {
+            await supabaseAdmin
+              .from('opportunities')
+              .update({
+                seller_name: sellerName,
+                seller_phone: firstContact.phone || null,
+                seller_email: firstContact.email || null,
+              })
+              .eq('id', opportunity.id)
+
+            opportunity.seller_name = sellerName
+            opportunity.seller_phone = firstContact.phone || null
+            opportunity.seller_email = firstContact.email || null
+          }
+        }
+      }
+    }
+
+    return NextResponse.json(
+      contactLinkWarning ? { opportunity, warning: contactLinkWarning } : { opportunity },
+      { status: 201 },
+    )
   } catch (e) {
     console.error('[API /market/opportunities] POST', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

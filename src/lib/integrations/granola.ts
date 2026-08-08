@@ -66,7 +66,13 @@ export async function syncGranolaNotes(input: { apiKey?: string | null; createdA
   const connection = await getGranolaConnection()
   if (!connection) throw new Error('Clé Granola absente')
 
-  const apiKey = decryptSecret(connection.encrypted_api_key)
+  let apiKey = ''
+  try {
+    apiKey = decryptSecret(connection.encrypted_api_key)
+  } catch (err) {
+    console.error('[granola] Déchiffrement de la clé Granola impossible:', err)
+    throw new Error('La clé Granola enregistrée ne peut pas être déchiffrée. Veuillez la saisir à nouveau dans les Réglages.')
+  }
   const createdAfter = input.createdAfter ?? new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
   const notes = await listGranolaNotes(apiKey, createdAfter)
   const candidates = await listDossierCandidates()

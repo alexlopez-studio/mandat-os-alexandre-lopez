@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { ensureClientDossierForBuyer } from '@/lib/client-portal'
+import { buildProjectTitle } from '@/lib/project-stages'
 
 const BUYER_STAGES = [
   'Nouveau contact',
@@ -41,37 +42,113 @@ export async function GET(
   try {
     const { id } = await params
 
-    const { data: buyer, error } = await supabaseAdmin
-      .from('buyer_criteria')
-      .select('*')
-      .eq('lead_id', id)
-      .single()
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    let query = supabaseAdmin.from('buyer_criteria').select('*')
+    if (isUuid) {
+      query = query.or(`id.eq.${id},lead_id.eq.${id}`)
+    } else {
+      query = query.eq('lead_id', id)
+    }
+
+    const { data: buyer, error } = await query.maybeSingle()
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json({ error: 'Acheteur non trouvé' }, { status: 404 })
-      }
       console.error('[API /market/buyers/[id]] GET error:', error)
       return NextResponse.json({ error: 'Erreur base de données' }, { status: 500 })
     }
 
-    const clientDossier = await loadBuyerClientDossierLink(id)
+    if (!buyer) {
+      return NextResponse.json({ error: 'Acheteur non trouvé' }, { status: 404 })
+    }
 
-    return NextResponse.json({ buyer, client_dossier: clientDossier })
+    const projectId = buyer.id
+
+    const [linksRes, eventsRes, clientDossier, propertyRes] = await Promise.all([
+      supabaseAdmin
+        .from('project_contacts')
+        .select('contact_id, role')
+        .or(`buyer_criteria_id.eq.${projectId},opportunity_id.eq.${projectId}`),
+      supabaseAdmin
+        .from('activities')
+        .select('*')
+        .eq('opportunity_id', projectId)
+        .order('occurred_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+      loadBuyerClientDossierLink(buyer.lead_id || projectId),
+      buyer.market_property_id
+        ? supabaseAdmin
+            .from('market_properties')
+            .select('id, title, city, zipcode, price, surface, rooms, property_type, url')
+            .eq('id', buyer.market_property_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+
+    const links = linksRes.data ?? []
+    const contactIds = Array.from(new Set(links.map((l) => l.contact_id)))
+
+    let contacts: any[] = []
+    if (contactIds.length > 0) {
+      const { data: contactRows } = await supabaseAdmin
+        .from('contacts')
+        .select('id, first_name, last_name, email, phone')
+        .in('id', contactIds)
+
+      const contactById = new Map((contactRows ?? []).map((c) => [c.id, c]))
+      contacts = links.map((l) => {
+        const c = contactById.get(l.contact_id)
+        return {
+          id: l.contact_id,
+          name: [c?.first_name, c?.last_name].filter(Boolean).join(' ').trim() || 'Contact sans nom',
+          last_name: c?.last_name || null,
+          email: c?.email || null,
+          phone: c?.phone || null,
+          role: l.role,
+        }
+      })
+    }
+
+    const events = eventsRes.data ?? []
+
+    const displayTitle = buildProjectTitle({
+      contactLastNames: contacts.map((c) => c.last_name),
+      contactName: contacts[0]?.name ?? null,
+      propertyType: buyer.type_bien,
+    })
+
+    return NextResponse.json({
+      buyer: {
+        ...buyer,
+        project_contacts: contacts,
+        display_title: displayTitle,
+      },
+      contacts,
+      events,
+      property: propertyRes.data ?? null,
+      client_dossier: clientDossier,
+    })
   } catch (e) {
     console.error('[API /market/buyers/[id]] GET exception:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
 
-async function loadBuyerClientDossierLink(buyerLeadId: string) {
-  const { data: dossier, error } = await supabaseAdmin
+async function loadBuyerClientDossierLink(buyerKey: string) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(buyerKey)
+  let query = supabaseAdmin
     .from('client_dossiers')
     .select('id, status')
-    .eq('buyer_lead_id', buyerLeadId)
+  if (isUuid) {
+    query = query.or(`buyer_lead_id.eq.${buyerKey},opportunity_id.eq.${buyerKey}`)
+  } else {
+    query = query.eq('buyer_lead_id', buyerKey)
+  }
+
+  const { data: dossier, error } = await query
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle()
+
   if (error && error.code !== 'PGRST116') throw error
   if (!dossier) return null
 
@@ -100,6 +177,19 @@ export async function PUT(
     const body = await req.json()
     const { type_bien, communes, budget_max, surface_min, pieces_min, criteres, active } = body
 
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    let findQuery = supabaseAdmin.from('buyer_criteria').select('id, lead_id')
+    if (isUuid) {
+      findQuery = findQuery.or(`id.eq.${id},lead_id.eq.${id}`)
+    } else {
+      findQuery = findQuery.eq('lead_id', id)
+    }
+    const { data: targetBuyer, error: findError } = await findQuery.maybeSingle()
+
+    if (findError || !targetBuyer) {
+      return NextResponse.json({ error: 'Acheteur non trouvé' }, { status: 404 })
+    }
+
     const updateData: {
       type_bien?: string | null
       communes?: string[] | null
@@ -126,7 +216,7 @@ export async function PUT(
         return NextResponse.json({ error: 'Statut acquéreur invalide' }, { status: 400 })
       }
       if (stage === SIGNED_BUYER_MANDATE_STAGE) {
-        const canCreate = await buyerHasClientEmail(id)
+        const canCreate = await buyerHasClientEmail(targetBuyer.lead_id || targetBuyer.id)
         if (!canCreate) {
           return NextResponse.json(
             { error: 'Email acquéreur requis avant création du dossier client.' },
@@ -139,44 +229,58 @@ export async function PUT(
     if (body.next_action !== undefined) updateData.next_action = parseText(body.next_action)
     if (body.due_date !== undefined) updateData.due_date = parseText(body.due_date)
 
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: 'Aucune donnée à mettre à jour' }, { status: 400 })
+    if (body.market_property_id !== undefined) {
+      await supabaseAdmin
+        .from('projects')
+        .update({ market_property_id: body.market_property_id || null })
+        .eq('id', targetBuyer.id)
     }
 
-    const { data, error } = await supabaseAdmin
+    if (Object.keys(updateData).length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('buyer_criteria')
+        .update(updateData)
+        .eq('id', targetBuyer.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('[API /market/buyers/[id]] PUT error:', error)
+        return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 })
+      }
+
+      let clientDossier = null
+      if (data.stage === SIGNED_BUYER_MANDATE_STAGE) {
+        const result = await ensureClientDossierForBuyer(targetBuyer.lead_id || targetBuyer.id)
+        clientDossier = result.dossier
+      }
+
+      return NextResponse.json({ buyer: data, client_dossier: clientDossier, success: true })
+    }
+
+    const { data: currentBuyer } = await supabaseAdmin
       .from('buyer_criteria')
-      .update(updateData)
-      .eq('lead_id', id)
-      .select()
+      .select('*')
+      .eq('id', targetBuyer.id)
       .single()
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json({ error: 'Acheteur non trouvé' }, { status: 404 })
-      }
-      console.error('[API /market/buyers/[id]] PUT error:', error)
-      return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 })
-    }
-
-    let clientDossier = null
-    if (data.stage === SIGNED_BUYER_MANDATE_STAGE) {
-      const result = await ensureClientDossierForBuyer(id)
-      clientDossier = result.dossier
-    }
-
-    return NextResponse.json({ buyer: data, client_dossier: clientDossier, success: true })
+    return NextResponse.json({ buyer: currentBuyer, success: true })
   } catch (e) {
     console.error('[API /market/buyers/[id]] PUT exception:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
   }
 }
 
-async function buyerHasClientEmail(buyerLeadId: string) {
-  const { data: buyer, error } = await supabaseAdmin
-    .from('buyer_criteria')
-    .select('lead_id, prospect_id')
-    .eq('lead_id', buyerLeadId)
-    .maybeSingle()
+async function buyerHasClientEmail(buyerKey: string) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(buyerKey)
+  let query = supabaseAdmin.from('buyer_criteria').select('id, lead_id, prospect_id')
+  if (isUuid) {
+    query = query.or(`id.eq.${buyerKey},lead_id.eq.${buyerKey}`)
+  } else {
+    query = query.eq('lead_id', buyerKey)
+  }
+
+  const { data: buyer, error } = await query.maybeSingle()
 
   if (error || !buyer) return false
 
@@ -189,14 +293,24 @@ async function buyerHasClientEmail(buyerLeadId: string) {
     if (prospect?.email) return true
   }
 
-  const { data: lead } = await supabaseAdmin
-    .from('leads')
-    .select('prospect:prospects!leads_prospect_id_fkey(email)')
-    .eq('id', buyerLeadId)
-    .maybeSingle()
+  if (buyer.lead_id) {
+    const { data: lead } = await supabaseAdmin
+      .from('leads')
+      .select('prospect:prospects!leads_prospect_id_fkey(email)')
+      .eq('id', buyer.lead_id)
+      .maybeSingle()
 
-  const record = lead as { prospect?: { email?: string | null } | null } | null
-  return Boolean(record?.prospect?.email)
+    const record = lead as { prospect?: { email?: string | null } | null } | null
+    if (record?.prospect?.email) return true
+  }
+
+  const { data: pc } = await supabaseAdmin
+    .from('project_contacts')
+    .select('contact:contacts(email)')
+    .eq('buyer_criteria_id', buyer.id)
+    .maybeSingle()
+  const contactRecord = pc as { contact?: { email?: string | null } | null } | null
+  return Boolean(contactRecord?.contact?.email)
 }
 
 export async function DELETE(
@@ -206,23 +320,31 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    // Soft-delete : on désactive l'acheteur
-    const { data, error } = await supabaseAdmin
-      .from('buyer_criteria')
-      .update({ active: false })
-      .eq('lead_id', id)
-      .select()
-      .single()
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    let findQuery = supabaseAdmin.from('buyer_criteria').select('id, lead_id')
+    if (isUuid) {
+      findQuery = findQuery.or(`id.eq.${id},lead_id.eq.${id}`)
+    } else {
+      findQuery = findQuery.eq('lead_id', id)
+    }
+    const { data: targetBuyer, error: findError } = await findQuery.maybeSingle()
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json({ error: 'Acheteur non trouvé' }, { status: 404 })
-      }
-      console.error('[API /market/buyers/[id]] DELETE error:', error)
+    if (findError || !targetBuyer) {
+      return NextResponse.json({ error: 'Acheteur non trouvé' }, { status: 404 })
+    }
+
+    // Suppression définitive du projet d'achat
+    const { error: deleteError } = await supabaseAdmin
+      .from('projects')
+      .delete()
+      .eq('id', targetBuyer.id)
+
+    if (deleteError) {
+      console.error('[API /market/buyers/[id]] DELETE error:', deleteError)
       return NextResponse.json({ error: 'Erreur lors de la suppression' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, buyer: data })
+    return NextResponse.json({ success: true })
   } catch (e) {
     console.error('[API /market/buyers/[id]] DELETE exception:', e)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

@@ -170,11 +170,11 @@ export function SellerOpportunityTable({ search, stageFilter, dueFilter }: Selle
                 role="button"
                 tabIndex={0}
                 className="cursor-pointer hover:bg-accent/30"
-                onClick={() => router.push(`/app/opportunities/${row.id}`)}
+                onClick={() => router.push(`/admin/market/opportunities/${row.id}`)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return
                   event.preventDefault()
-                  router.push(`/app/opportunities/${row.id}`)
+                  router.push(`/admin/market/opportunities/${row.id}`)
                 }}
               >
                 <TableCell className="py-3">

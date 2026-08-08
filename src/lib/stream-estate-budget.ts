@@ -12,12 +12,12 @@ export const STREAM_ESTATE_WEBHOOK_EVENT_COST_KEY = 'stream_estate_webhook_event
 // bornée uniquement par le budget disponible (ignore max_items_per_sync).
 export const STREAM_ESTATE_UNLIMITED_ITEMS_KEY = 'stream_estate_unlimited_items'
 
-const DEFAULT_SYNC_ENABLED = false
-const DEFAULT_MANUAL_BALANCE_EUR = 0
+const DEFAULT_SYNC_ENABLED = true
+const DEFAULT_MANUAL_BALANCE_EUR = 100.0
 const DEFAULT_COST_PER_REQUEST_EUR = 0.01
-const DEFAULT_MAX_REQUESTS_PER_SYNC = 30
+const DEFAULT_MAX_REQUESTS_PER_SYNC = 500
 const DEFAULT_MIN_BALANCE_EUR = 0
-const DEFAULT_UNLIMITED_ITEMS = false
+const DEFAULT_UNLIMITED_ITEMS = true
 const DEFAULT_MONTHLY_BUDGET_EUR = 0
 const DEFAULT_WEBHOOK_EVENT_COST_EUR = 0
 

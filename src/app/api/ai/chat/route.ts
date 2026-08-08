@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { enqueueAiAction, suggestActionsFromMessage } from '@/lib/ai/actions'
-import { aiChat } from '@/lib/ai/gateway'
+import { aiChatWithTools, type AiConversationMessage } from '@/lib/ai/gateway'
 import { adminDb } from '@/lib/ai/db'
 import { loadAiDossierContext, renderDossierContext } from '@/lib/ai/dossier-context'
 import { isAiProviderId } from '@/lib/ai/providers'
+import { executeGoogleTool, GOOGLE_TOOL_DEFINITIONS } from '@/lib/google/tools'
+
+/** Garde-fou : au-delà, on rend la main plutôt que de boucler indéfiniment. */
+const MAX_STEPS = 6
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,23 +49,50 @@ export async function POST(req: NextRequest) {
       .order('created_at', { ascending: true })
       .limit(20)
 
-    const result = await aiChat({
-      providerId,
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            'Tu es l’assistant privé Mandat OS d’Alexandre Lopez, conseiller immobilier iad.',
-            'Tu aides à gérer les dossiers, emails, documents, rendez-vous et comptes rendus.',
-            'Tu ne déclenches jamais une action externe sans validation humaine.',
-            'Réponds en français, de façon concise, orientée prochaine action.',
-            renderDossierContext(context),
-          ].join('\n'),
-        },
-        ...((history ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>).filter((item) => item.role === 'user' || item.role === 'assistant'),
-      ],
-    })
+    const today = new Date()
+    const messages: AiConversationMessage[] = [
+      {
+        role: 'system',
+        content: [
+          `Nous sommes le ${today.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} (${today.toISOString().slice(0, 10)}).`,
+          'Tu es l’assistant privé Mandat OS d’Alexandre Lopez, conseiller immobilier iad.',
+          'Tu aides à gérer les dossiers, emails, documents, rendez-vous et comptes rendus.',
+          '',
+          'Tu disposes d’outils branchés sur son compte Google : documents Drive, messagerie Gmail, agenda.',
+          'Utilise-les dès qu’une question porte sur un document, un échange ou une date — ne réponds jamais',
+          'de mémoire sur ces sujets, et n’invente jamais un nom de fichier ni le contenu d’un mail.',
+          'Convertis toi-même les dates relatives en AAAA-MM-JJ à partir de la date du jour indiquée plus haut.',
+          'Quand tu cites un document, donne son nom et son lien Drive.',
+          '',
+          'Ces outils sont en lecture seule. Tu ne déclenches jamais une action externe sans validation humaine :',
+          'pour un envoi de mail ou une écriture dans l’agenda, propose-la, ne la fais pas.',
+          'Réponds en français, de façon concise, orientée prochaine action.',
+          renderDossierContext(context),
+        ].join('\n'),
+      },
+      ...((history ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>).filter(
+        (item) => item.role === 'user' || item.role === 'assistant',
+      ),
+    ]
+
+    // Boucle d'agent : le modèle alterne appels d'outils et réflexion jusqu'à
+    // produire une réponse en clair.
+    let result = await aiChatWithTools({ providerId, model, messages, tools: GOOGLE_TOOL_DEFINITIONS })
+
+    for (let step = 0; step < MAX_STEPS && result.toolCalls.length > 0; step += 1) {
+      messages.push({
+        role: 'assistant',
+        content: result.content || null,
+        tool_calls: result.toolCalls,
+      })
+
+      for (const call of result.toolCalls) {
+        const output = await executeGoogleTool(call.name, call.arguments)
+        messages.push({ role: 'tool', tool_call_id: call.id, content: output })
+      }
+
+      result = await aiChatWithTools({ providerId, model, messages, tools: GOOGLE_TOOL_DEFINITIONS })
+    }
 
     await adminDb().from('ai_messages').insert({
       thread_id: thread.id,
@@ -113,11 +144,23 @@ async function ensureThread(input: {
     if (data) return data
   }
 
+  let validDossierFk: string | null = null
+  if (input.dossierId) {
+    const { data: dossierRow } = await adminDb()
+      .from('client_dossiers')
+      .select('id')
+      .eq('id', input.dossierId)
+      .maybeSingle()
+    if (dossierRow) {
+      validDossierFk = dossierRow.id
+    }
+  }
+
   const { data, error } = await adminDb()
     .from('ai_threads')
     .insert({
       title: input.title || 'Conversation IA',
-      dossier_id: input.dossierId,
+      dossier_id: validDossierFk,
       provider_id: input.providerId,
       model: input.model,
       created_by: 'admin',

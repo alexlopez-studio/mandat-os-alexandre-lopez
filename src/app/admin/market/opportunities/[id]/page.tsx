@@ -12,8 +12,6 @@ import {
   Clock,
   Copy,
   Edit,
-  Eye,
-  ExternalLink,
   FileText,
   FolderOpen,
   Home,
@@ -21,7 +19,6 @@ import {
   Link2,
   Loader2,
   Mail,
-  MapPin,
   MoreHorizontal,
   Phone,
   Plus,
@@ -32,9 +29,11 @@ import {
   StickyNote,
   Trash2,
   UserRound,
+  X,
   XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { DeadlineCalendar, ProjectContactDialog, type DeadlineItem } from '@/components/pro'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -54,6 +53,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Separator } from '@/components/ui/separator'
 import {
   Select,
   SelectContent,
@@ -64,6 +64,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { DossierWorkspace } from '../../clients/DossierWorkspace'
+import { buildProjectTitle } from '@/lib/project-stages'
 import { isPortalEligibleStage } from '@/lib/market/seller-stages'
 import type { ActivityType } from '@/types/supabase'
 
@@ -103,6 +104,7 @@ interface Opportunity {
   property_city: string | null
   property_type: string | null
   project_contacts?: any[]
+  display_title?: string | null
   estimated_price_min: number | null
   estimated_price_max: number | null
   selling_timeline: string | null
@@ -317,7 +319,6 @@ interface ProfessionalDraft {
 }
 
 const STAGES = [
-  'Veille annonce',
   'Nouveau contact',
   'Pré-estimation',
   "Visite d'estimation",
@@ -496,12 +497,36 @@ function formatDateTime(value: string | null | undefined) {
   })
 }
 
+/** Horodatage complet `dd/mm/yyyy hh:mm`, pour tracer l'historique du journal. */
+function formatStamp(value: string | null | undefined) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 function isClientPortalEstimationPublished(opportunity: Opportunity | null) {
   return asRecord(opportunity?.professional_opinion).client_portal_published === true
 }
 
+/** Date d'échéance : sert à ordonner ce qui est *à venir*. */
 function eventDate(event: OpportunityEvent) {
   return event.due_at ?? event.occurred_at ?? event.created_at
+}
+
+/**
+ * Date de saisie : sert à ordonner le journal, du plus récent au plus ancien.
+ * On ne passe jamais par `due_at`, sinon une tâche datée dans le futur
+ * remonterait en tête alors qu'elle a été saisie il y a longtemps.
+ */
+function eventRecency(event: OpportunityEvent) {
+  return event.created_at ?? event.occurred_at
 }
 
 function isUserEditableProperty(property: PropertyInfo | null) {
@@ -864,6 +889,8 @@ export default function OpportunityDetailPage() {
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null)
 
   const [leadDialogOpen, setLeadDialogOpen] = useState(false)
+  const [contactDialogOpen, setContactDialogOpen] = useState(false)
+  const [detachingContactId, setDetachingContactId] = useState<string | null>(null)
   const [leadSearch, setLeadSearch] = useState('')
   const [leadRows, setLeadRows] = useState<LeadSearchRow[]>([])
   const [leadLoading, setLeadLoading] = useState(false)
@@ -877,6 +904,7 @@ export default function OpportunityDetailPage() {
   const [propertyLoading, setPropertyLoading] = useState(false)
   const [attachingPropertyId, setAttachingPropertyId] = useState<string | null>(null)
   const [deletingOpportunity, setDeletingOpportunity] = useState(false)
+  const [activityFilter, setActivityFilter] = useState<'all' | 'note' | 'task' | 'call' | 'meeting'>('all')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1077,7 +1105,7 @@ export default function OpportunityDetailPage() {
   }, [propertyDialogOpen, loadProperties])
 
   const events = useMemo(
-    () => [...(opportunity?.events ?? [])].sort((a, b) => new Date(eventDate(b)).getTime() - new Date(eventDate(a)).getTime()),
+    () => [...(opportunity?.events ?? [])].sort((a, b) => new Date(eventRecency(b)).getTime() - new Date(eventRecency(a)).getTime()),
     [opportunity?.events],
   )
   const upcomingEvents = useMemo(
@@ -1087,6 +1115,54 @@ export default function OpportunityDetailPage() {
     [events],
   )
   const recentEvents = events.slice(0, 6)
+
+  /**
+   * Échéances portées sur le calendrier : celles des activités (tâche, appel,
+   * RDV) et les jalons datés du projet. Le ton porte l'urgence : dépassée,
+   * honorée, ou à venir.
+   */
+  const deadlineItems = useMemo<DeadlineItem[]>(() => {
+    if (!opportunity) return []
+    const now = Date.now()
+
+    const fromEvents = events
+      .filter((event) => Boolean(event.due_at))
+      .map((event) => ({
+        id: event.id,
+        date: event.due_at as string,
+        label: event.title || EVENT_CONFIG[event.type].label,
+        hint: EVENT_CONFIG[event.type].label,
+        tone: event.completed_at
+          ? ('done' as const)
+          : new Date(event.due_at as string).getTime() < now
+            ? ('overdue' as const)
+            : ('default' as const),
+      }))
+
+    const milestones: Array<{ key: string; date: string | null; label: string }> = [
+      { key: 'due_date', date: opportunity.due_date, label: 'Prochaine action' },
+      { key: 'visit_at', date: opportunity.visit_at, label: 'Visite' },
+      { key: 'report_delivered_at', date: opportunity.report_delivered_at, label: "Remise de l'estimation" },
+      { key: 'follow_up_at', date: opportunity.follow_up_at, label: 'Suivi' },
+    ]
+
+    const fromMilestones = milestones
+      .filter((milestone): milestone is { key: string; date: string; label: string } => Boolean(milestone.date))
+      .map((milestone) => ({
+        id: `milestone-${milestone.key}`,
+        date: milestone.date,
+        label: milestone.label,
+        hint: 'Jalon projet',
+        tone: new Date(milestone.date).getTime() < now ? ('done' as const) : ('default' as const),
+      }))
+
+    return [...fromEvents, ...fromMilestones]
+  }, [events, opportunity])
+
+  const filteredActivityEvents = useMemo(() => {
+    if (activityFilter === 'all') return recentEvents
+    return events.filter((e) => e.type === activityFilter)
+  }, [events, recentEvents, activityFilter])
 
   function openEvent(type: ActivityType) {
     setEditingEventId(null)
@@ -1101,7 +1177,7 @@ export default function OpportunityDetailPage() {
   }
 
   async function updateStage(stage: string) {
-    if (!opportunity || stage === opportunity.stage) return
+    if (!opportunity) return
     setSavingStage(true)
     try {
       const res = await fetch('/api/market/opportunities/' + id, {
@@ -1111,8 +1187,13 @@ export default function OpportunityDetailPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erreur API')
-      setOpportunity({ ...data.opportunity, events: data.opportunity.events ?? [] })
-      toast.success('Étape mise à jour')
+      setOpportunity((prev) => (prev ? {
+        ...prev,
+        ...data.opportunity,
+        stage: data.opportunity?.stage ?? stage,
+        project_contacts: prev.project_contacts ?? data.opportunity?.project_contacts ?? [],
+      } : null))
+      toast.success('Étape mise à jour : ' + stage)
     } catch (err) {
       console.error('[OpportunityDetailPage] stage:', err)
       toast.error('Impossible de modifier l’étape')
@@ -1156,6 +1237,12 @@ export default function OpportunityDetailPage() {
   }
 
   async function saveEvent() {
+    // L'API exige un titre pour les tâches : on le contrôle ici pour éviter
+    // un 400 qui laisserait la popup ouverte sans explication.
+    if (eventDraft.type === 'task' && !eventDraft.title.trim()) {
+      toast.error('Un titre est requis pour une tâche')
+      return
+    }
     if (!eventDraft.title.trim() && !eventDraft.content.trim() && eventDraft.type !== 'estimation') {
       toast.error('Ajoute un titre ou un contenu')
       return
@@ -1176,7 +1263,10 @@ export default function OpportunityDetailPage() {
             title: eventDraft.type === 'estimation' ? milestone?.label : eventDraft.title.trim(),
             content: eventDraft.content.trim() || null,
             due_at: eventDraft.due_at || null,
-            occurred_at: eventDraft.occurred_at || null,
+            // Seuls les jalons d'estimation portent une date saisie ; pour les
+            // autres types l'horodatage est celui du serveur (création) et une
+            // modification ne doit pas le réécrire.
+            occurred_at: eventDraft.type === 'estimation' ? eventDraft.occurred_at || null : null,
             metadata: eventDraft.type === 'estimation' ? { milestone: eventDraft.milestone } : {},
             created_by: 'admin',
           }),
@@ -1190,7 +1280,7 @@ export default function OpportunityDetailPage() {
       await load()
     } catch (err) {
       console.error('[OpportunityDetailPage] event:', err)
-      toast.error('Impossible d’enregistrer l’activité')
+      toast.error(err instanceof Error ? err.message : 'Impossible d’enregistrer l’activité')
     } finally {
       setSavingEvent(false)
     }
@@ -1236,6 +1326,72 @@ export default function OpportunityDetailPage() {
     }
   }
 
+  const [duplicatingOpportunity, setDuplicatingOpportunity] = useState(false)
+  const [quickNoteInput, setQuickNoteInput] = useState('')
+  const [submittingQuickNote, setSubmittingQuickNote] = useState(false)
+
+  async function handleQuickAddNote() {
+    const text = quickNoteInput.trim()
+    if (!text || !opportunity) return
+    setSubmittingQuickNote(true)
+    try {
+      const res = await fetch(`/api/market/opportunities/${id}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'note',
+          title: 'Note',
+          content: text,
+          created_by: 'admin',
+        }),
+      })
+      if (!res.ok) throw new Error('Erreur création note')
+      toast.success('Note ajoutée au journal d’activité')
+      setQuickNoteInput('')
+      await load()
+    } catch (err) {
+      console.error('Quick note error:', err)
+      toast.error('Impossible d’ajouter la note')
+    } finally {
+      setSubmittingQuickNote(false)
+    }
+  }
+
+  async function duplicateOpportunity() {
+    if (!opportunity) return
+    setDuplicatingOpportunity(true)
+    try {
+      const contactIds = (opportunity.project_contacts ?? []).map((pc: any) => pc.contacts?.id).filter(Boolean)
+      const payload = {
+        kind: (opportunity as any).kind || 'vente',
+        title: (opportunity.title || formattedTitle) + ' (Copie)',
+        seller_name: opportunity.seller_name,
+        seller_phone: opportunity.seller_phone,
+        seller_email: opportunity.seller_email,
+        property_city: opportunity.property_city,
+        property_type: opportunity.property_type,
+        contact_ids: contactIds,
+      }
+      const res = await fetch('/api/market/opportunities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Erreur lors de la duplication')
+      toast.success('Projet dupliqué avec succès')
+      const newId = data.opportunity?.id || data.id
+      if (newId) {
+        router.push(`/admin/market/opportunities/${newId}`)
+      }
+    } catch (err) {
+      console.error('Duplicate error:', err)
+      toast.error('Impossible de dupliquer ce projet')
+    } finally {
+      setDuplicatingOpportunity(false)
+    }
+  }
+
   async function deleteOpportunity() {
     if (!window.confirm('Supprimer cette opportunité ? Cette action est irréversible.')) return
     setDeletingOpportunity(true)
@@ -1247,12 +1403,29 @@ export default function OpportunityDetailPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Erreur API')
       toast.success('Opportunité supprimée')
-      router.push('/app/opportunities')
+      router.push('/admin/market/opportunities')
     } catch (err) {
       console.error('[OpportunityDetailPage] delete opportunity:', err)
       toast.error("Impossible de supprimer l'opportunité")
     } finally {
       setDeletingOpportunity(false)
+    }
+  }
+
+  async function detachProjectContact(contactId: string, name: string) {
+    setDetachingContactId(contactId)
+    try {
+      const res = await fetch(`/api/market/projects/${id}/contacts?contact_id=${contactId}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) throw new Error('Erreur API')
+      toast.success(`${name} détaché du projet`)
+      await load()
+    } catch (err) {
+      console.error('[OpportunityDetailPage] detach contact:', err)
+      toast.error('Impossible de détacher ce contact')
+    } finally {
+      setDetachingContactId(null)
     }
   }
 
@@ -1272,7 +1445,7 @@ export default function OpportunityDetailPage() {
       if (res.status === 409) {
         toast.error('Ce contact est déjà rattaché à une opportunité', {
           action: data.existing_opportunity?.id
-            ? { label: 'Ouvrir', onClick: () => router.push(`/app/opportunities/${data.existing_opportunity.id}`) }
+            ? { label: 'Ouvrir', onClick: () => router.push(`/admin/market/opportunities/${data.existing_opportunity.id}`) }
             : undefined,
         })
         return
@@ -1328,7 +1501,7 @@ export default function OpportunityDetailPage() {
       if (res.status === 409) {
         toast.error('Ce bien est déjà rattaché à une opportunité', {
           action: data.existing_opportunity?.id
-            ? { label: 'Ouvrir', onClick: () => router.push(`/app/opportunities/${data.existing_opportunity.id}`) }
+            ? { label: 'Ouvrir', onClick: () => router.push(`/admin/market/opportunities/${data.existing_opportunity.id}`) }
             : undefined,
         })
         return
@@ -1350,7 +1523,7 @@ export default function OpportunityDetailPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-8">
         <p className="text-muted-foreground">Opportunité introuvable</p>
-        <Button variant="outline" onClick={() => router.push('/app/opportunities')}>Retour</Button>
+        <Button variant="outline" onClick={() => router.push('/admin/market/opportunities')}>Retour</Button>
       </div>
     )
   }
@@ -1363,276 +1536,338 @@ export default function OpportunityDetailPage() {
   const estimate = opportunity.estimated_price_min || opportunity.estimated_price_max
     ? [opportunity.estimated_price_min, opportunity.estimated_price_max].filter((value): value is number => value != null).map(formatPrice).join(' - ')
     : null
+  const formattedTitle = (
+    buildProjectTitle({
+      contactLastNames: (opportunity.project_contacts ?? []).map((entry: any) => entry.contacts?.last_name),
+      contactName: opportunity.seller_name,
+      propertyType: opportunity.property_type ?? (opportunity.property as any)?.property_type ?? null,
+    }) || 
+    (opportunity.display_title && opportunity.display_title !== 'Opportunité vendeur' && opportunity.display_title !== 'Nouveau Vendeur' ? opportunity.display_title : null) || 
+    (opportunity.title && opportunity.title !== 'Opportunité vendeur' && opportunity.title !== 'Nouveau Vendeur' ? opportunity.title : null) || 
+    'Projet Vente'
+  )
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 border-b pb-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <Link href="/app/opportunities" className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-            <ArrowLeft className="size-4" /> Retour aux vendeurs
-          </Link>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="min-w-0 text-2xl font-bold leading-tight">{opportunity.title ?? 'Opportunité vendeur'}</h1>
-            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-              Opportunité vendeur
-            </Badge>
-            <Badge variant="outline">{currentStage}</Badge>
+    <div className="space-y-6">
+      {/* Top Navigation Link */}
+      <div>
+        <Link href="/admin/market/opportunities" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="size-4" /> Retour aux projets
+        </Link>
+      </div>
+
+      {/* Top Banner Card (Fiche Projet Header) */}
+      <div className="rounded-2xl border bg-card p-6 shadow-xs space-y-6">
+        {/* Top Header Row */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
+              PROJET {(opportunity as any).kind === 'achat' ? 'ACHAT' : 'VENTE'}
+            </div>
+            <h1 className="text-2xl font-bold text-foreground leading-tight">
+              {formattedTitle}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5 font-medium">
+              {opportunity.property_city || ((opportunity as any).communes ?? [])[0] || 'Brignoles'}
+            </p>
           </div>
-          <div className="mt-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
-            <span>Créée le {formatDate(opportunity.created_at)}</span>
-            {opportunity.source_channel && <span>{opportunity.source_channel}</span>}
-            {estimate && <span>{estimate}</span>}
+
+          <div className="flex items-center gap-2 shrink-0">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" aria-label="Options du projet">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={duplicateOpportunity} disabled={duplicatingOpportunity} className="cursor-pointer">
+                  {duplicatingOpportunity ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Copy className="mr-2 size-4 text-muted-foreground" />}
+                  Dupliquer le projet
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={deleteOpportunity} disabled={deletingOpportunity} className="text-destructive font-medium cursor-pointer">
+                  {deletingOpportunity ? <Loader2 className="mr-2 size-4 animate-spin text-destructive" /> : <Trash2 className="mr-2 size-4 text-destructive" />}
+                  Supprimer le projet
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
-          <Button variant="destructive" className="w-full sm:w-auto" onClick={deleteOpportunity} disabled={deletingOpportunity}>
-            {deletingOpportunity ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Trash2 className="mr-2 size-4" />}
-            Supprimer
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="w-full shrink-0 bg-primary hover:bg-primary/90 sm:w-auto">
-                <Plus className="mr-2 size-4" />
-                Ajouter
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => openEvent('note')}><StickyNote className="mr-2 size-4" /> Ajouter une note</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openEvent('task')}><CheckCircle2 className="mr-2 size-4" /> Ajouter une tâche</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openEvent('call')}><Phone className="mr-2 size-4" /> Planifier un appel</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openEvent('meeting')}><Calendar className="mr-2 size-4" /> Planifier un RDV</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openEvent('email')}><Mail className="mr-2 size-4" /> Logguer un email</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => openEvent('estimation')}><Building2 className="mr-2 size-4" /> Ajouter une étape estimation</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <Separator />
+
+        {/* Stage Navigation Row */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              ÉTAPE
+            </span>
+            <span className="text-lg font-bold text-primary">
+              {currentStage}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  disabled={savingStage}
+                  className="bg-primary hover:bg-primary/90 text-white font-semibold rounded-full px-5 h-9 text-sm shadow-xs"
+                >
+                  {savingStage ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : null}
+                  Modifier l’étape
+                  <ChevronDown className="ml-2 size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {STAGES.map((stg) => (
+                  <DropdownMenuItem
+                    key={stg}
+                    onClick={() => updateStage(stg)}
+                    className={cn(
+                      "cursor-pointer font-medium text-sm flex items-center justify-between py-2",
+                      stg === currentStage && "bg-primary/10 font-bold text-primary"
+                    )}
+                  >
+                    <span>{stg}</span>
+                    {stg === currentStage && <CheckCircle2 className="size-4 text-primary" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 
+      {/* Tabs */}
       <Tabs defaultValue="overview" className="space-y-5">
         <TabsList variant="pill" className="w-full justify-start">
-          <TabsTrigger value="overview" className="flex-1"><LayoutDashboard /> Vue d’ensemble</TabsTrigger>
-          <TabsTrigger value="estimation" className="flex-1"><Building2 /> Estimation</TabsTrigger>
-          <TabsTrigger value="dossier" className="flex-1"><FolderOpen /> Suivi client</TabsTrigger>
-          <TabsTrigger value="history" className="flex-1"><History /> Historique</TabsTrigger>
+          <TabsTrigger value="overview" className="flex-1"><LayoutDashboard className="mr-1.5 size-4" /> Vue d’ensemble</TabsTrigger>
+          <TabsTrigger value="estimation" className="flex-1"><Building2 className="mr-1.5 size-4" /> Estimation</TabsTrigger>
+          <TabsTrigger value="dossier" className="flex-1"><FolderOpen className="mr-1.5 size-4" /> Suivi client</TabsTrigger>
+          <TabsTrigger value="history" className="flex-1"><History className="mr-1.5 size-4" /> Historique</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <main className="space-y-5">
-              <section className="rounded-xl border bg-card p-5">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <h2 className="text-base font-semibold">Étape en cours</h2>
-                    <div className="mt-3 flex items-center gap-3 text-sm">
-                      <span className="rounded-md border bg-muted/30 px-2 py-1 font-medium">{stageIndex + 1}/{STAGES.length}</span>
-                      <span>{currentStage}</span>
-                      {savingStage && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                    </div>
-                  </div>
-                  <Select value={currentStage} onValueChange={updateStage}>
-                    <SelectTrigger className="w-full md:w-56"><SelectValue /></SelectTrigger>
-                    <SelectContent>{STAGES.map((stage) => <SelectItem key={stage} value={stage}>{stage}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="mt-4 h-2 w-full rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progress}%` }} />
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Ouverte depuis le {formatDate(opportunity.created_at)}.
-                </p>
-
-              </section>
-
-              <section className="rounded-xl border bg-card p-5">
-                <h2 className="text-base font-semibold">Activités à venir</h2>
-                <div className="mt-4 space-y-3">
-                  {upcomingEvents.length === 0 ? (
-                    <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
-                      Aucune activité à venir. Utilise le bouton Ajouter pour créer une tâche, un appel ou un RDV.
-                    </div>
-                  ) : upcomingEvents.map((event) => (
-                    <ActivityRow
-                      key={event.id}
-                      event={event}
-                      onEdit={editEvent}
-                      action={
-                        <EventActions
-                          event={event}
-                          deleting={deletingEventId === event.id}
-                          onEdit={editEvent}
-                          onDelete={deleteEvent}
-                        />
-                      }
-                    />
-                  ))}
-                </div>
-              </section>
-
-              <section className="rounded-xl border bg-card p-5">
-                <h2 className="text-base font-semibold">Historique récent</h2>
-                <Timeline events={recentEvents} emptyText="Aucune activité récente." onEdit={editEvent} onDelete={deleteEvent} deletingEventId={deletingEventId} />
-              </section>
-            </main>
-
-            <aside className="space-y-5">
-              <InfoCard
-                title="Suivi client"
-                icon={<FolderOpen className="size-4" />}
-                action={opportunity.client_dossier ? (
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={openClientPortalLinkFromOpportunity} disabled={openingClientLink}>
-                      {openingClientLink ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <ExternalLink className="mr-1 size-3.5" />}
-                      Prévisualiser
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={copyClientPortalUrlFromOpportunity} disabled={copyingClientLink}>
-                      {copyingClientLink ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Copy className="mr-1 size-3.5" />}
-                      Copier le lien
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={inviteClientFromOpportunity} disabled={invitingClient}>
-                      {invitingClient ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Mail className="mr-1 size-3.5" />}
-                      Donner accès
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={publishEstimationFromOpportunity} disabled={publishingEstimation || estimationPublished}>
-                      {publishingEstimation ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Rocket className="mr-1 size-3.5" />}
-                      Publier
-                    </Button>
-                  </div>
-                ) : isPortalEligibleStage(currentStage) ? (
-                  <Button variant="outline" size="sm" onClick={createDossier} disabled={creatingDossier}>
-                    {creatingDossier ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Plus className="mr-1 size-3.5" />}
-                    Créer
+          {/* Main 2-Column Grid */}
+          <div className="grid gap-6 lg:grid-cols-12">
+            {/* Left Column (Contacts & Le Bien) */}
+            <div className="space-y-6 lg:col-span-5">
+              {/* Card: CONTACTS RATTACHÉS */}
+              <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    CONTACTS RATTACHÉS
+                  </h2>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setContactDialogOpen(true)}
+                    className="text-primary hover:text-primary/80 font-bold text-xs p-0 h-auto"
+                  >
+                    + Ajouter
                   </Button>
-                ) : null}
-              >
-                {opportunity.client_dossier ? (
-                  <div className="space-y-3">
-                    <Badge variant="outline" className="text-[11px]">
-                      {CLIENT_DOSSIER_STATUS_LABELS[opportunity.client_dossier.status] ?? opportunity.client_dossier.status}
-                    </Badge>
-                    <Badge variant="outline" className={clientAccessSent ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}>
-                      {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
-                    </Badge>
-                    <Badge variant="outline" className={estimationPublished ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-600'}>
-                      {estimationPublished ? 'Estimation publiée' : 'Estimation non publiée'}
-                    </Badge>
-                    <p className="text-xs text-muted-foreground">Lien permanent sécurisé : copiez-le pour le client, puis utilisez « Donner accès » au moment de la remise.</p>
-                    <div className="flex items-center gap-2 rounded-lg border p-3 text-sm">
-                      <FileText className="size-4 text-primary" />
-                      <span>{opportunity.client_dossier.documents_validated}/{opportunity.client_dossier.documents_total} documents validés</span>
-                    </div>
-                    {opportunity.client_dossier.documents_missing > 0 && (
-                      <p className="text-xs text-amber-700">{opportunity.client_dossier.documents_missing} document(s) à traiter</p>
-                    )}
-                    <Button variant="outline" size="sm" className="w-full" onClick={openClientPortalLinkFromOpportunity} disabled={openingClientLink}>
-                      {openingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Eye className="mr-1 size-4" />}
-                      Prévisualiser l’espace client
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full" onClick={copyClientPortalUrlFromOpportunity} disabled={copyingClientLink}>
-                      {copyingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Copy className="mr-1 size-4" />}
-                      Copier le lien client
-                    </Button>
-                    <Button variant="outline" size="sm" className="w-full" onClick={publishEstimationFromOpportunity} disabled={publishingEstimation || estimationPublished}>
-                      {publishingEstimation ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Rocket className="mr-1 size-4" />}
-                      Publier l’estimation dans l’espace client
-                    </Button>
-                  </div>
-                ) : isPortalEligibleStage(currentStage) ? (
-                  <EmptyCardText>Suivi client non créé. Crée-le pour obtenir le lien client et préparer le suivi de vente.</EmptyCardText>
-                ) : (
-                  <EmptyCardText>Le suivi client sera disponible à partir de la remise de l’estimation.</EmptyCardText>
-                )}
-              </InfoCard>
+                </div>
 
-              <InfoCard
-                title="Bien"
-                icon={<Home className="size-4" />}
-                action={opportunity.property ? (
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/app/properties/${opportunity.property.id}`}><ExternalLink className="mr-1 size-3.5" /> Ouvrir</Link>
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => setPropertyDialogOpen(true)}>
-                      <Link2 className="mr-1 size-3.5" /> Changer
-                    </Button>
-                    {editableProperty && (
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href={`/app/properties/${opportunity.property.id}`}><Edit className="mr-1 size-3.5" /> Modifier</Link>
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <Button variant="outline" size="sm" onClick={() => setPropertyDialogOpen(true)}><Plus className="mr-1 size-3.5" /> Ajouter</Button>
-                )}
-              >
-                {opportunity.property ? (
-                  <div className="space-y-3">
-                    <PropertyThumbnail title={opportunity.property.title} url={opportunity.property.thumbnail_url} />
-                    <div>
-                      <p className="line-clamp-2 font-medium">{opportunity.property.title ?? 'Bien en annonce'}</p>
-                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {opportunity.property.city && <span>{opportunity.property.city}</span>}
-                        {opportunity.property.zipcode && <span>{opportunity.property.zipcode}</span>}
-                        {opportunity.property.status && <Badge variant="outline" className="text-[10px]">{opportunity.property.status}</Badge>}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <Metric label="Prix" value={formatPrice(opportunity.property.price)} />
-                      <Metric label="Surface" value={formatNumber(opportunity.property.surface, ' m²')} />
-                      <Metric label="Vendeur" value={opportunity.property.seller_type ?? '—'} />
-                      <Metric label="Source" value={opportunity.property.source ?? '—'} />
-                    </div>
-                    {!editableProperty && (
-                      <p className="text-xs text-muted-foreground">Annonce importée : modification verrouillée.</p>
-                    )}
-                  </div>
-                ) : (
-                  <EmptyCardText>Aucun bien associé à cette opportunité.</EmptyCardText>
-                )}
-              </InfoCard>
-
-              <InfoCard
-                title="Contacts Vendeurs"
-                icon={<UserRound className="size-4" />}
-                action={
-                  <Button variant="outline" size="sm" onClick={() => setLeadDialogOpen(true)}><Plus className="mr-1 size-3.5" /> Ajouter</Button>
-                }
-              >
                 {opportunity.project_contacts && opportunity.project_contacts.length > 0 ? (
-                  <ul className="space-y-4">
+                  <div className="space-y-3">
                     {opportunity.project_contacts.map((pc: any, idx: number) => {
                       const contact = pc.contacts
                       if (!contact) return null
-                      const cName = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() || 'Contact'
+                      const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() || 'Contact'
                       const initials = [contact.first_name?.[0], contact.last_name?.[0]].filter(Boolean).join('').toUpperCase() || 'C'
+                      const roleLabel = pc.role ? pc.role.toLowerCase() : 'contact'
+
+                      const colors = [
+                        'bg-sky-600 text-white',
+                        'bg-slate-700 text-white',
+                        'bg-amber-700 text-white',
+                        'bg-emerald-700 text-white',
+                      ]
+                      const avatarColor = colors[idx % colors.length]
+
                       return (
-                        <li key={contact.id || idx} className="flex items-start gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[13px] font-bold text-slate-500">
-                            {initials}
+                        <div key={contact.id || idx} className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={cn("size-9 shrink-0 flex items-center justify-center rounded-full text-xs font-bold shadow-xs", avatarColor)}>
+                              {initials}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-foreground truncate">
+                                {name} <span className="text-xs font-normal italic text-muted-foreground">• {roleLabel}</span>
+                              </div>
+                              {contact.phone && (
+                                <a href={`tel:${contact.phone}`} className="text-xs text-muted-foreground hover:text-primary font-medium block truncate">
+                                  {contact.phone}
+                                </a>
+                              )}
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-[15px] font-bold">{cName}</div>
-                            <div className="text-[13px] text-slate-500">{pc.role}</div>
-                            {contact.phone && <div className="mt-1 text-[13px] text-primary">{contact.phone}</div>}
-                          </div>
-                        </li>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => detachProjectContact(contact.id, name)}
+                            disabled={detachingContactId === contact.id}
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
+                          >
+                            {detachingContactId === contact.id ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+                          </Button>
+                        </div>
                       )
                     })}
-                  </ul>
-                ) : opportunity.lead ? (
-                  <div className="space-y-3">
-                    <div>
-                      <p className="font-medium">{leadName(opportunity.lead)}</p>
-                      <div className="mt-1 space-y-1 text-sm text-muted-foreground">
-                        {opportunity.lead.prospect?.phone && <p className="flex items-center gap-1.5"><Phone className="size-3.5" /> {opportunity.lead.prospect.phone}</p>}
-                        {opportunity.lead.prospect?.email && <p className="flex items-center gap-1.5"><Mail className="size-3.5" /> {opportunity.lead.prospect.email}</p>}
-                      </div>
-                    </div>
                   </div>
                 ) : (
-                  <EmptyCardText>Aucun contact associé à cette opportunité.</EmptyCardText>
+                  <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground space-y-2">
+                    <p>Aucun contact rattaché à ce projet.</p>
+                    <Button variant="outline" size="sm" onClick={() => setContactDialogOpen(true)} className="text-xs font-medium">
+                      + Rattacher un contact
+                    </Button>
+                  </div>
                 )}
-              </InfoCard>
-            </aside>
+              </div>
+
+              {/* Card: LE BIEN */}
+              <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  LE BIEN
+                </h2>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Block 1: Surface habitable */}
+                  <div className="rounded-xl bg-muted/40 p-4 border border-border/50">
+                    <span className="block text-xs font-medium text-muted-foreground mb-1">
+                      📐 Surface habitable
+                    </span>
+                    <span className="text-sm font-bold text-foreground">
+                      {opportunity.property?.surface || (opportunity as any).property_surface || propertyDraft.surface
+                        ? `${opportunity.property?.surface || (opportunity as any).property_surface || propertyDraft.surface} m²`
+                        : 'Non renseigné'}
+                    </span>
+                  </div>
+
+                  {/* Block 2: Configuration */}
+                  <div className="rounded-xl bg-muted/40 p-4 border border-border/50">
+                    <span className="block text-xs font-medium text-muted-foreground mb-1">
+                      🧩 Configuration
+                    </span>
+                    <span className="text-sm font-bold text-foreground">
+                      {opportunity.property?.rooms || (opportunity as any).property_rooms || propertyDraft.nb_pieces
+                        ? `${opportunity.property?.rooms || (opportunity as any).property_rooms || propertyDraft.nb_pieces} pièces`
+                        : 'Non renseigné'}
+                    </span>
+                  </div>
+
+                  {/* Block 3: Surface terrain */}
+                  <div className="rounded-xl bg-muted/40 p-4 border border-border/50">
+                    <span className="block text-xs font-medium text-muted-foreground mb-1">
+                      🌳 Surface terrain
+                    </span>
+                    <span className="text-sm font-bold text-foreground">
+                      {opportunity.property?.land_surface || (opportunity as any).property_land_surface || propertyDraft.surface_terrain
+                        ? `${opportunity.property?.land_surface || (opportunity as any).property_land_surface || propertyDraft.surface_terrain} m²`
+                        : 'Non renseigné'}
+                    </span>
+                  </div>
+
+                  {/* Block 4: Estimation */}
+                  <div className="rounded-xl bg-muted/40 p-4 border border-border/50">
+                    <span className="block text-xs font-medium text-muted-foreground mb-1">
+                      💰 Estimation
+                    </span>
+                    <span className="text-sm font-bold text-primary">
+                      {estimate || 'Non estimé'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card: ÉCHÉANCES */}
+              <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  ÉCHÉANCES
+                </h2>
+                <DeadlineCalendar
+                  items={deadlineItems}
+                  emptyText="Aucune échéance : ajoutez une tâche, un appel ou un RDV."
+                  onSelectItem={(item) => {
+                    const event = events.find((candidate) => candidate.id === item.id)
+                    if (event) editEvent(event)
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Right Column (Journal d'activité) */}
+            <div className="space-y-6 lg:col-span-7">
+              <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    JOURNAL D'ACTIVITÉ
+                  </h2>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-6 text-[10px] uppercase font-bold tracking-wider text-muted-foreground rounded-full px-2.5">
+                        FILTRE : {activityFilter === 'all' ? 'TOUT' : activityFilter}
+                        <ChevronDown className="ml-1 size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      <DropdownMenuItem onClick={() => setActivityFilter('all')} className="text-xs font-semibold cursor-pointer">TOUT</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setActivityFilter('note')} className="text-xs cursor-pointer">NOTES</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setActivityFilter('task')} className="text-xs cursor-pointer">TÂCHES</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setActivityFilter('call')} className="text-xs cursor-pointer">APPELS</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setActivityFilter('meeting')} className="text-xs cursor-pointer">RDV</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                {/* Action Buttons to add events */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEvent('note')}
+                    className="h-8 text-xs font-semibold rounded-lg"
+                  >
+                    <StickyNote className="mr-1.5 size-3.5 text-primary" /> + Note
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEvent('task')}
+                    className="h-8 text-xs font-semibold rounded-lg"
+                  >
+                    <CheckCircle2 className="mr-1.5 size-3.5 text-emerald-600" /> + Tâche
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEvent('call')}
+                    className="h-8 text-xs font-semibold rounded-lg"
+                  >
+                    <Phone className="mr-1.5 size-3.5 text-sky-600" /> + Appel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEvent('meeting')}
+                    className="h-8 text-xs font-semibold rounded-lg"
+                  >
+                    <Calendar className="mr-1.5 size-3.5 text-amber-600" /> + RDV
+                  </Button>
+                </div>
+
+                {/* Timeline Events Feed */}
+                <Timeline
+                  events={filteredActivityEvents}
+                  emptyText="Aucune activité pour ce filtre."
+                  onEdit={editEvent}
+                  onDelete={deleteEvent}
+                  deletingEventId={deletingEventId}
+                />
+              </div>
+            </div>
           </div>
         </TabsContent>
 
@@ -1753,6 +1988,15 @@ export default function OpportunityDetailPage() {
         onSubmit={saveEvent}
       />
 
+      <ProjectContactDialog
+        open={contactDialogOpen}
+        onOpenChange={setContactDialogOpen}
+        projectId={id}
+        kind="vente"
+        excludeIds={(opportunity.project_contacts ?? []).map((pc: any) => pc.contacts?.id).filter(Boolean)}
+        onAttached={load}
+      />
+
       <LeadAttachDialog
         open={leadDialogOpen}
         rows={leadRows}
@@ -1764,7 +2008,7 @@ export default function OpportunityDetailPage() {
         onSearchChange={setLeadSearch}
         onAttach={attachLead}
         onAttachNewProject={attachAsNewProject}
-        onOpenOpportunity={(opportunityId) => router.push(`/app/opportunities/${opportunityId}`)}
+        onOpenOpportunity={(opportunityId) => router.push(`/admin/market/opportunities/${opportunityId}`)}
       />
 
       <PropertyAttachDialog
@@ -1781,7 +2025,7 @@ export default function OpportunityDetailPage() {
         onTypeFilterChange={setPropertyTypeFilter}
         onStatusFilterChange={setPropertyStatusFilter}
         onAttach={attachProperty}
-        onOpenOpportunity={(opportunityId) => router.push(`/app/opportunities/${opportunityId}`)}
+        onOpenOpportunity={(opportunityId) => router.push(`/admin/market/opportunities/${opportunityId}`)}
       />
     </div>
   )
@@ -2272,6 +2516,11 @@ function ActivityRow({ event, action, onEdit }: { event: OpportunityEvent; actio
             {authorLabel(event.created_by) && <span>{authorLabel(event.created_by)}</span>}
             {event.completed_at && <span>Terminée le {formatDateTime(event.completed_at)}</span>}
           </div>
+          {formatStamp(event.created_at) && (
+            <p className="mt-2 text-xs text-muted-foreground/70">
+              Créée le {formatStamp(event.created_at)}
+            </p>
+          )}
         </div>
         <div onClick={(e) => e.stopPropagation()}>
           {action}
@@ -2365,59 +2614,73 @@ function EventDialog({
   const config = EVENT_CONFIG[draft.type]
   const showDue = ['task', 'call', 'meeting'].includes(draft.type)
   const showMilestone = draft.type === 'estimation'
+  // La date de l'activité n'est saisie que pour les jalons d'estimation, où elle
+  // pilote les dates du projet. Ailleurs elle est horodatée automatiquement.
+  const showOccurredAt = showMilestone
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>{config.label}</DialogTitle>
-          <DialogDescription>Ajoute une activité à la timeline de cette opportunité.</DialogDescription>
+      <DialogContent className="sm:max-w-lg rounded-2xl p-6 border bg-card">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="text-xl font-bold text-foreground">
+            {config.label}
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Ajoute une activité à la timeline de cette opportunité.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 py-2">
           {showMilestone ? (
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Jalon</span>
+            <div className="space-y-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Jalon</span>
               <Select value={draft.milestone} onValueChange={(value) => onDraftChange({ ...draft, milestone: value })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="h-10 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>{ESTIMATION_MILESTONES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
               </Select>
-            </label>
+            </div>
           ) : (
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Titre</span>
-              <Input value={draft.title} onChange={(e) => onDraftChange({ ...draft, title: e.target.value })} />
-            </label>
+            <div className="space-y-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Titre</span>
+              <Input value={draft.title} onChange={(e) => onDraftChange({ ...draft, title: e.target.value })} className="h-10 rounded-xl" placeholder="ex: Relancer le vendeur" />
+            </div>
           )}
 
-          <label className="space-y-1">
-            <span className="text-xs font-medium text-muted-foreground">Détails</span>
+          <div className="space-y-1.5">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Détails</span>
             <Textarea
               value={draft.content}
               onChange={(e) => onDraftChange({ ...draft, content: e.target.value })}
               rows={4}
+              className="rounded-xl"
               placeholder="Compte rendu, objectif, précision utile..."
             />
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Date de l’activité</span>
-              <Input type="datetime-local" value={draft.occurred_at} onChange={(e) => onDraftChange({ ...draft, occurred_at: e.target.value })} />
-            </label>
-            {showDue && (
-              <label className="space-y-1">
-                <span className="text-xs font-medium text-muted-foreground">Échéance</span>
-                <Input type="datetime-local" value={draft.due_at} onChange={(e) => onDraftChange({ ...draft, due_at: e.target.value })} />
-              </label>
-            )}
           </div>
+
+          {(showOccurredAt || showDue) && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {showOccurredAt && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date de l’activité</span>
+                  <Input type="datetime-local" value={draft.occurred_at} onChange={(e) => onDraftChange({ ...draft, occurred_at: e.target.value })} className="h-10 rounded-xl text-xs" />
+                </div>
+              )}
+              {showDue && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Échéance</span>
+                  <Input type="datetime-local" value={draft.due_at} onChange={(e) => onDraftChange({ ...draft, due_at: e.target.value })} className="h-10 rounded-xl text-xs" />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={saving}>Annuler</Button>
-          <Button onClick={onSubmit} disabled={saving} className="bg-primary hover:bg-primary/90">
-            {saving ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Plus className="mr-1 size-4" />}
+        <DialogFooter className="pt-3 border-t flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving} className="rounded-full">
+            Annuler
+          </Button>
+          <Button onClick={onSubmit} disabled={saving} className="bg-primary hover:bg-primary/90 text-white rounded-full px-5">
+            {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Plus className="mr-1.5 size-4" />}
             {editing ? 'Enregistrer' : 'Ajouter'}
           </Button>
         </DialogFooter>
@@ -2453,17 +2716,17 @@ function LeadAttachDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Ajouter un contact</DialogTitle>
-          <DialogDescription>Recherche dans les contacts vendeurs déjà présents.</DialogDescription>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl rounded-2xl p-6 border bg-card">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="text-xl font-bold text-foreground">Ajouter un contact</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">Recherche dans les contacts vendeurs déjà présents.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-4 py-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder="Nom, téléphone, email..." className="pl-9" />
+            <Input value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder="Nom, téléphone, email..." className="pl-9 h-10 rounded-xl" />
           </div>
-          <div className="max-h-[420px] space-y-2 overflow-y-auto rounded-lg border p-2">
+          <div className="max-h-[380px] space-y-2 overflow-y-auto rounded-xl border p-2 bg-background">
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Chargement...</div>
             ) : rows.length === 0 ? (
@@ -2471,12 +2734,12 @@ function LeadAttachDialog({
             ) : rows.map((lead) => {
               const alreadyLinked = lead.opportunity && lead.opportunity.id !== opportunityId
               return (
-                <div key={lead.id} className="rounded-lg border p-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div key={lead.id} className="rounded-xl border p-3 bg-card hover:border-primary/40 transition-colors">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{leadOptionName(lead)}</p>
-                        {alreadyLinked && <Badge variant="destructive" className="text-[10px]">déjà lié</Badge>}
+                        <p className="font-bold text-sm text-foreground">{leadOptionName(lead)}</p>
+                        {alreadyLinked && <Badge variant="secondary" className="text-[10px]">déjà lié</Badge>}
                       </div>
                       <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                         {lead.prospect.phone && <span>{lead.prospect.phone}</span>}
@@ -2487,15 +2750,15 @@ function LeadAttachDialog({
                     </div>
                     {alreadyLinked ? (
                       <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => onOpenOpportunity(lead.opportunity!.id)}>Voir l’opportunité</Button>
-                        <Button size="sm" onClick={() => onAttachNewProject(lead)} disabled={attachingId === lead.id} className="bg-primary hover:bg-primary/90">
-                          {attachingId === lead.id ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Plus className="mr-1 size-4" />}
+                        <Button variant="outline" size="sm" className="rounded-full text-xs" onClick={() => onOpenOpportunity(lead.opportunity!.id)}>Voir l’opportunité</Button>
+                        <Button size="sm" onClick={() => onAttachNewProject(lead)} disabled={attachingId === lead.id} className="bg-primary hover:bg-primary/90 text-white rounded-full text-xs">
+                          {attachingId === lead.id ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Plus className="mr-1 size-3.5" />}
                           Nouveau projet
                         </Button>
                       </div>
                     ) : (
-                      <Button size="sm" onClick={() => onAttach(lead)} disabled={attachingId === lead.id} className="bg-primary hover:bg-primary/90">
-                        {attachingId === lead.id ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Link2 className="mr-1 size-4" />}
+                      <Button size="sm" onClick={() => onAttach(lead)} disabled={attachingId === lead.id} className="bg-primary hover:bg-primary/90 text-white rounded-full text-xs">
+                        {attachingId === lead.id ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Link2 className="mr-1 size-3.5" />}
                         Ajouter
                       </Button>
                     )}
@@ -2543,41 +2806,41 @@ function PropertyAttachDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Ajouter un bien</DialogTitle>
-          <DialogDescription>Recherche uniquement dans les biens déjà présents en base.</DialogDescription>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl rounded-2xl p-6 border bg-card">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="text-xl font-bold text-foreground">Ajouter un bien</DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">Recherche uniquement dans les biens déjà présents en base.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px_160px]">
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Recherche</span>
+        <div className="space-y-4 py-2">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px_140px]">
+            <div className="space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Recherche</span>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder="Titre, commune, CP..." className="pl-9" />
+                <Input value={search} onChange={(e) => onSearchChange(e.target.value)} placeholder="Titre, commune, CP..." className="pl-9 h-10 rounded-xl" />
               </div>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Type</span>
-              <select value={typeFilter} onChange={(e) => onTypeFilterChange(e.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Type</span>
+              <select value={typeFilter} onChange={(e) => onTypeFilterChange(e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-medium">
                 <option value="">Tous</option>
                 {PROPERTY_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
               </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Statut</span>
-              <select value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+            </div>
+            <div className="space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Statut</span>
+              <select value={statusFilter} onChange={(e) => onStatusFilterChange(e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-medium">
                 <option value="">Tous</option>
                 <option value="active">En ligne</option>
                 <option value="online">Online</option>
                 <option value="expired">Expiré</option>
                 <option value="opportunity">Opportunité</option>
               </select>
-            </label>
+            </div>
           </div>
 
-          <div className="max-h-[460px] space-y-2 overflow-y-auto rounded-lg border p-2">
+          <div className="max-h-[380px] space-y-2 overflow-y-auto rounded-xl border p-2 bg-background">
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Chargement...</div>
             ) : rows.length === 0 ? (
@@ -2585,10 +2848,10 @@ function PropertyAttachDialog({
             ) : rows.map((property) => {
               const alreadyLinked = property.opportunity && property.opportunity.id !== opportunityId
               return (
-                <div key={property.id} className="rounded-lg border p-3">
+                <div key={property.id} className="rounded-xl border p-3 bg-card hover:border-primary/40 transition-colors">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 flex-1 gap-3">
-                      <div className="h-20 w-28 shrink-0 overflow-hidden rounded-md border bg-muted/30">
+                      <div className="h-16 w-24 shrink-0 overflow-hidden rounded-lg border bg-muted/30">
                         {property.thumbnail_url ? (
                           <div
                             aria-label={property.title ?? 'Miniature du bien'}
@@ -2604,9 +2867,9 @@ function PropertyAttachDialog({
                       </div>
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="line-clamp-1 font-medium">{property.title ?? 'Bien en annonce'}</p>
+                          <p className="line-clamp-1 font-bold text-sm text-foreground">{property.title ?? 'Bien en annonce'}</p>
                           {property.status && <Badge variant="outline" className="text-[10px]">{property.status}</Badge>}
-                          {alreadyLinked && <Badge variant="destructive" className="text-[10px]">déjà lié</Badge>}
+                          {alreadyLinked && <Badge variant="secondary" className="text-[10px]">déjà lié</Badge>}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                           {[property.property_type, property.city, property.zipcode].filter(Boolean).map((item) => <span key={item}>{item}</span>)}
@@ -2617,10 +2880,10 @@ function PropertyAttachDialog({
                       </div>
                     </div>
                     {alreadyLinked ? (
-                      <Button variant="outline" size="sm" onClick={() => onOpenOpportunity(property.opportunity!.id)}>Voir l’opportunité</Button>
+                      <Button variant="outline" size="sm" className="rounded-full text-xs" onClick={() => onOpenOpportunity(property.opportunity!.id)}>Voir l’opportunité</Button>
                     ) : (
-                      <Button size="sm" onClick={() => onAttach(property)} disabled={attachingId === property.id} className="bg-primary hover:bg-primary/90">
-                        {attachingId === property.id ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Link2 className="mr-1 size-4" />}
+                      <Button size="sm" onClick={() => onAttach(property)} disabled={attachingId === property.id} className="bg-primary hover:bg-primary/90 text-white rounded-full text-xs">
+                        {attachingId === property.id ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <Link2 className="mr-1 size-3.5" />}
                         Ajouter
                       </Button>
                     )}

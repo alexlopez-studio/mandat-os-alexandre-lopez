@@ -160,11 +160,11 @@ export function BuyerOpportunityTable({ search, stageFilter, activeFilter, dueFi
                 role="button"
                 tabIndex={0}
                 className="cursor-pointer hover:bg-accent/30"
-                onClick={() => router.push(`/app/acheteurs/${row.lead_id}`)}
+                onClick={() => router.push(`/app/acheteurs/${row.lead_id || row.id}`)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter' && event.key !== ' ') return
                   event.preventDefault()
-                  router.push(`/app/acheteurs/${row.lead_id}`)
+                  router.push(`/app/acheteurs/${row.lead_id || row.id}`)
                 }}
               >
                 <TableCell className="py-3">

@@ -5,31 +5,21 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
-  Search,
-  SlidersHorizontal,
   ArrowUpDown,
+  ArrowUpRight,
+  Building2,
+  Eye,
+  Flag,
   Home,
   MapPin,
-  Timer,
   MoreHorizontal,
-  Eye,
+  Search,
   Star,
-  Flag,
-  ArrowUpRight,
-  RefreshCw,
-  Building2,
+  Timer,
 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,8 +27,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
+import {
+  DataToolbar,
+  PageHeader,
+  PageLayout,
+  PageSection,
+  SearchInput,
+} from '@/components/pro'
 import type { SellerPhase } from '@/lib/mandat/types'
 import { SellerPhaseBadge } from '@/app/dashboard/radar/_components/SellerPhaseBadge'
 import { DimensionBadges } from '../DimensionBadges'
@@ -108,145 +111,144 @@ const STATUS_BADGES: Record<string, { label: string; variant: 'default' | 'secon
 }
 
 const DPE_COLORS: Record<string, string> = {
-  A: 'bg-green-100 text-green-700 border-green-200',
-  B: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  C: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  D: 'bg-orange-100 text-orange-700 border-orange-200',
-  E: 'bg-red-100 text-red-700 border-red-200',
-  F: 'bg-red-200 text-red-800 border-red-300',
-  G: 'bg-red-300 text-red-900 border-red-400',
+  A: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold',
+  B: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold',
+  C: 'bg-lime-100 text-lime-800 border-lime-300 font-bold',
+  D: 'bg-amber-100 text-amber-800 border-amber-300 font-bold',
+  E: 'bg-orange-100 text-orange-800 border-orange-300 font-bold',
+  F: 'bg-rose-100 text-rose-800 border-rose-300 font-bold',
+  G: 'bg-red-100 text-red-800 border-red-300 font-bold',
 }
 
 function formatPrice(price: number | null) {
-  if (!price) return '—'
+  if (price === null || price === undefined) return '—'
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(price)
 }
 
-function formatCost(value: number) {
-  return new Intl.NumberFormat('fr-FR', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
+function formatCost(cost: number | null | undefined): string {
+  if (cost == null) return '—'
+  return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 }).format(cost)
+}
+
+function daysOnline(firstSeenIso: string | null) {
+  if (!firstSeenIso) return null
+  const diff = Date.now() - new Date(firstSeenIso).getTime()
+  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)))
 }
 
 function relativeTime(iso: string | null): string {
-  if (!iso) return '—'
+  if (!iso) return 'Jamais'
   const diff = Date.now() - new Date(iso).getTime()
   const m = Math.floor(diff / 60000)
-  if (m < 1) return 'À l’instant'
+  if (m < 1) return "À l'instant"
   if (m < 60) return `Il y a ${m} min`
   const h = Math.floor(m / 60)
-  if (h < 24) return `Il y a ${h}h`
-  return `Il y a ${Math.floor(h / 24)}j`
+  if (h < 24) return `Il y a ${h} h`
+  return `Il y a ${Math.floor(h / 24)} j`
 }
 
-function daysOnline(firstSeenAt: string | null): number | null {
-  if (!firstSeenAt) return null
-  const diff = Date.now() - new Date(firstSeenAt).getTime()
-  return Math.max(0, Math.floor(diff / 86_400_000))
-}
-
-export function PropertiesTable({ initialZipcode }: { initialZipcode?: string }) {
+export function PropertiesTable({
+  initialZipcode,
+  mapWrapper,
+}: {
+  initialZipcode?: string
+  mapWrapper?: React.ReactNode
+}) {
   const router = useRouter()
   const [properties, setProperties] = useState<PropertyRow[]>([])
+  const [zoneContext, setZoneContext] = useState<ZoneContext | null>(null)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [zipcodeFilter, setZipcodeFilter] = useState<string | null>(initialZipcode ?? null)
   const [creatingOppId, setCreatingOppId] = useState<string | null>(null)
+
+  // Filtres UI
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [cityFilter, setCityFilter] = useState('all')
-  const [typeFilter, setTypeFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [cityFilter, setCityFilter] = useState<string>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
   const [phaseFilter, setPhaseFilter] = useState<'all' | SellerPhase>('all')
   const [sellerFilter, setSellerFilter] = useState<'all' | 'individual' | 'agency'>('all')
-  const [zipcodeFilter, setZipcodeFilter] = useState(initialZipcode ?? '')
-  const [zoneContext, setZoneContext] = useState<ZoneContext | null>(null)
-  const [sortBy, setSortBy] = useState<'price' | 'last_seen_at' | 'surface' | 'mandate_score'>('last_seen_at')
+
+  // Tri
+  const [sortBy, setSortBy] = useState<'mandate_score' | 'last_seen_at' | 'price' | 'surface'>('mandate_score')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        limit: '100',
-        sort: `${sortBy}.${sortOrder}`,
-      })
+      const params = new URLSearchParams()
+      params.set('limit', '100')
+      params.set('sort', sortBy)
+      params.set('order', sortOrder)
       if (zipcodeFilter) params.set('zipcode', zipcodeFilter)
-      const [res, statsRes] = await Promise.all([
-        fetch(`/api/market/properties?${params}`),
-        zipcodeFilter ? fetch('/api/market/sync-stats') : Promise.resolve(null),
-      ])
+
+      const res = await fetch(`/api/market/properties?${params.toString()}`)
       const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Erreur API')
       setProperties(data.properties ?? [])
       setTotal(data.total ?? 0)
-      if (statsRes) {
-        const stats = await statsRes.json()
-        const zone = (stats.zones ?? []).find((item: ZoneContext) => item.zipcode === zipcodeFilter)
-        setZoneContext(zone ?? null)
-      } else {
-        setZoneContext(null)
-      }
+      setZoneContext(data.zone_context ?? null)
+    } catch (err) {
+      toast.error('Impossible de charger les biens')
     } finally {
       setLoading(false)
     }
   }, [sortBy, sortOrder, zipcodeFilter])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    load()
+  }, [load])
 
-  async function createOpportunity(prop: PropertyRow) {
-    const isPriceDrop = prop.status === 'price_drop' || prop.status === 'prix_en_baisse'
-    const titleBase = prop.title ?? 'Bien'
-    const title = prop.city ? `${titleBase} — ${prop.city}` : titleBase
-    setCreatingOppId(prop.id)
+  function clearZipcodeFilter() {
+    setZipcodeFilter(null)
+    router.replace('/admin/market/radar')
+  }
+
+  async function createOpportunity(property: PropertyRow) {
+    setCreatingOppId(property.id)
     try {
       const res = await fetch('/api/market/opportunities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          market_property_id: prop.id,
-          title,
-          stage: 'Nouveau contact',
-          priority: isPriceDrop ? 'high' : 'medium',
-          signal_type: isPriceDrop ? 'price_drop' : 'new_listing',
-          source_channel: 'annonce',
-          property_city: prop.city,
-          property_zipcode: prop.zipcode,
-          property_type: prop.property_type,
-          estimated_price_min: prop.price,
-          estimated_price_max: prop.price,
-          created_from: 'manual',
+          market_property_id: property.id,
+          title: property.title ? `Vendeur - ${property.title}` : 'Projet Vente',
+          seller_name: null,
+          seller_phone: null,
         }),
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error ?? 'Erreur API')
-      toast.success(data.existing ? 'Opportunité déjà existante' : 'Opportunité créée', {
-        description: title,
-        action: { label: 'Voir la fiche', onClick: () => router.push(`/app/properties/${prop.id}`) },
-      })
-      await load()
-    } catch (err) {
-      console.error('Erreur création opportunité:', err)
-      toast.error('Impossible de créer l’opportunité')
+      if (!res.ok) throw new Error('Erreur lors de la création de l’opportunité')
+      const json = await res.json()
+      toast.success('Projet créé avec succès !')
+      router.push(`/admin/market/opportunities/${json.id}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Création impossible')
     } finally {
       setCreatingOppId(null)
     }
   }
 
-  function clearZipcodeFilter() {
-    setZipcodeFilter('')
-    window.history.replaceState(null, '', '/app/properties')
-  }
+  const cities = Array.from(new Set(properties.map(p => p.city).filter((c): c is string => Boolean(c)))).sort()
+  const types  = Array.from(new Set(properties.map(p => p.property_type).filter((t): t is string => Boolean(t)))).sort()
 
-  const cities = [...new Set(properties.map(p => p.city).filter(Boolean))] as string[]
-  const types  = [...new Set(properties.map(p => p.property_type).filter(Boolean))] as string[]
-
-  const filtered = properties.filter(p => {
-    if (search) {
-      const s = search.toLowerCase()
-      if (!(p.title ?? '').toLowerCase().includes(s) && !(p.city ?? '').toLowerCase().includes(s)) return false
+  const filtered = properties.filter((p) => {
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      const matchTitle = p.title?.toLowerCase().includes(q)
+      const matchCity  = p.city?.toLowerCase().includes(q)
+      const matchZip   = p.zipcode?.includes(q)
+      if (!matchTitle && !matchCity && !matchZip) return false
     }
-    if (statusFilter !== 'all' && p.status !== statusFilter) return false
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'active' && p.status !== 'active' && p.status !== 'actif') return false
+      if (statusFilter === 'price_drop' && p.status !== 'price_drop' && p.status !== 'prix_en_baisse') return false
+      if (statusFilter === 'new' && p.status !== 'new' && p.status !== 'nouveau') return false
+      if (statusFilter === 'opportunity' && p.status !== 'opportunity' && p.status !== 'opportunite') return false
+      if (statusFilter === 'stagnant' && p.status !== 'stagnant' && p.status !== 'stagne') return false
+      if (statusFilter === 'expired' && p.status !== 'expired') return false
+      if (statusFilter === 'removed' && p.status !== 'removed') return false
+    }
     if (cityFilter   !== 'all' && p.city !== cityFilter)     return false
     if (typeFilter   !== 'all' && p.property_type !== typeFilter) return false
     if (phaseFilter  !== 'all' && p.mandate_score?.phase !== phaseFilter) return false
@@ -254,8 +256,6 @@ export function PropertiesTable({ initialZipcode }: { initialZipcode?: string })
     return true
   })
 
-  // Tri par score mandat côté client (le score n'est pas une colonne SQL) ;
-  // les autres tris restent gérés côté serveur.
   const sorted = sortBy === 'mandate_score'
     ? [...filtered].sort((a, b) => {
         const av = a.mandate_score?.score ?? -1
@@ -265,355 +265,333 @@ export function PropertiesTable({ initialZipcode }: { initialZipcode?: string })
     : filtered
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Marché immobilier</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {loading ? '…' : total} biens synchronisés{zipcodeFilter ? ` sur le CP ${zipcodeFilter}` : ''}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={cn('h-4 w-4 mr-1', loading && 'animate-spin')} />
-          Actualiser
-        </Button>
-      </div>
+    <PageLayout width="wide">
+      <PageHeader
+        eyebrow="Aspiration & Radar"
+        title="Biens du marché"
+        description={`${loading ? '...' : total} bien(s) synchronisé(s) sur le secteur.`}
+      />
 
-      {zipcodeFilter && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-accent/60 px-4 py-3">
-          <div>
-            <p className="text-sm font-semibold text-foreground">
-              {zoneContext ? `Biens synchronisés pour ${zoneContext.name}` : 'Biens filtrés par zone surveillée'}
-            </p>
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>CP {zipcodeFilter}{zoneContext?.city ? ` · ${zoneContext.city}` : ''}</span>
-              <span>{zoneContext?.seen_property_count ?? total} revu{(zoneContext?.seen_property_count ?? total) > 1 ? 's' : ''}</span>
-              <span className={(zoneContext?.not_seen_property_count ?? 0) > 0 ? 'text-amber-700' : ''}>
-                {zoneContext?.not_seen_property_count ?? 0} non revu{(zoneContext?.not_seen_property_count ?? 0) > 1 ? 's' : ''}
-              </span>
-              {zoneContext && (
-                <span>
-                  Dernier succès : {relativeTime(zoneContext.last_success_sync_at)} · {zoneContext.last_external_requests} item{zoneContext.last_external_requests > 1 ? 's' : ''} · {formatCost(zoneContext.last_estimated_cost_eur)}
+      <PageSection className="space-y-6">
+        {zipcodeFilter && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-4 shadow-xs">
+            <div>
+              <p className="text-sm font-bold text-foreground">
+                {zoneContext ? `Biens synchronisés pour ${zoneContext.name}` : 'Biens filtrés par zone surveillée'}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground font-medium">
+                <span>CP {zipcodeFilter}{zoneContext?.city ? ` · ${zoneContext.city}` : ''}</span>
+                <span>{zoneContext?.seen_property_count ?? total} revu{(zoneContext?.seen_property_count ?? total) > 1 ? 's' : ''}</span>
+                <span className={(zoneContext?.not_seen_property_count ?? 0) > 0 ? 'text-amber-700 font-bold' : ''}>
+                  {zoneContext?.not_seen_property_count ?? 0} non revu{(zoneContext?.not_seen_property_count ?? 0) > 1 ? 's' : ''}
                 </span>
-              )}
-              {zoneContext?.last_blocked_reason && <span className="text-amber-700">{zoneContext.last_blocked_reason}</span>}
+                {zoneContext && (
+                  <span>
+                    Dernier succès : {relativeTime(zoneContext.last_success_sync_at)} · {zoneContext.last_external_requests} item{zoneContext.last_external_requests > 1 ? 's' : ''} · {formatCost(zoneContext.last_estimated_cost_eur)}
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
-          <Button variant="outline" size="sm" onClick={clearZipcodeFilter}>
-            Voir tous les biens
-          </Button>
-        </div>
-      )}
-
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher un bien, une ville..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-9 w-[160px]">
-                <SelectValue placeholder="Statut" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les statuts</SelectItem>
-                <SelectItem value="active">Actif</SelectItem>
-                <SelectItem value="price_drop">Prix en baisse</SelectItem>
-                <SelectItem value="new">Nouveau</SelectItem>
-                <SelectItem value="opportunity">Opportunité</SelectItem>
-                <SelectItem value="stagnant">Stagne</SelectItem>
-                <SelectItem value="expired">Expiré</SelectItem>
-                <SelectItem value="removed">Retiré</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={cityFilter} onValueChange={setCityFilter}>
-              <SelectTrigger className="h-9 w-[160px]">
-                <SelectValue placeholder="Ville" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les villes</SelectItem>
-                {cities.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="h-9 w-[160px]">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les types</SelectItem>
-                {types.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Select value={phaseFilter} onValueChange={(v) => setPhaseFilter(v as 'all' | SellerPhase)}>
-              <SelectTrigger className="h-9 w-[160px]">
-                <SelectValue placeholder="Phase vendeur" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes les phases</SelectItem>
-                <SelectItem value="golden">Fenêtre d&apos;or</SelectItem>
-                <SelectItem value="hot">Chaud</SelectItem>
-                <SelectItem value="warm">Tiède</SelectItem>
-                <SelectItem value="cold">Froid</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sellerFilter} onValueChange={(v) => setSellerFilter(v as 'all' | 'individual' | 'agency')}>
-              <SelectTrigger className="h-9 w-[160px]">
-                <SelectValue placeholder="Type de vendeur" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les vendeurs</SelectItem>
-                <SelectItem value="individual">Particulier</SelectItem>
-                <SelectItem value="agency">Agence</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="ghost" size="sm" className="h-9">
-              <SlidersHorizontal className="h-4 w-4 mr-1" />
-              Filtres
+            <Button variant="outline" size="sm" onClick={clearZipcodeFilter} className="rounded-full font-semibold text-xs">
+              Voir tous les biens
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        )}
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {sorted.length} résultat{sorted.length !== 1 ? 's' : ''}
-        </p>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Trier par :</span>
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-            <SelectTrigger className="h-8 w-[150px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mandate_score">Score mandat</SelectItem>
-              <SelectItem value="last_seen_at">Dernière vue</SelectItem>
-              <SelectItem value="price">Prix</SelectItem>
-              <SelectItem value="surface">Surface</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-          >
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+        <DataToolbar
+          variant="pill"
+          filters={
+            <>
+              <div className="mr-auto w-full sm:w-auto">
+                <SearchInput
+                  label="Rechercher un bien"
+                  placeholder="Rechercher un bien, une ville..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="rounded-full bg-secondary/50 border-none h-9 w-full sm:w-64"
+                />
+              </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30">
-                  <th className="text-left p-4 font-medium text-muted-foreground">Bien</th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">Localisation</th>
-                  <th className="text-right p-4 font-medium text-muted-foreground">Prix</th>
-                  <th className="text-right p-4 font-medium text-muted-foreground">Surface</th>
-                  <th className="text-right p-4 font-medium text-muted-foreground">Prix/m²</th>
-                  <th className="text-center p-4 font-medium text-muted-foreground">DPE</th>
-                  <th className="text-center p-4 font-medium text-muted-foreground">Statut</th>
-                  <th className="text-center p-4 font-medium text-muted-foreground">Score mandat</th>
-                  <th className="text-center p-4 font-medium text-muted-foreground">En ligne</th>
-                  <th className="w-[50px] p-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && (
-                  <tr>
-                    <td colSpan={10} className="p-8 text-center text-sm text-muted-foreground">
-                      Chargement…
-                    </td>
-                  </tr>
-                )}
-                {!loading && sorted.map((prop) => {
-                  const badge = STATUS_BADGES[prop.status ?? '']
-                  const days = daysOnline(prop.first_seen_at)
-                  const dpe = prop.dpe?.toUpperCase()
-                  return (
-                    <tr
-                      key={prop.id}
-                      className="border-b last:border-0 hover:bg-accent/50 transition-colors"
-                    >
-                      <td className="p-4">
-                        <Link
-                          href={`/app/properties/${prop.id}`}
-                          className="font-medium hover:text-primary transition-colors"
-                        >
-                          {prop.title || 'Bien sans titre'}
-                        </Link>
-                        <div className="flex items-center gap-1 mt-1">
-                          {prop.property_type && (
-                            <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                              {prop.property_type}
-                            </Badge>
-                          )}
-                          {prop.rooms ? (
-                            <span className="text-xs text-muted-foreground">{prop.rooms} pièces</span>
-                          ) : null}
-                          {(prop.source_count ?? 1) > 1 && (
-                            <Badge variant="secondary" className="text-[10px] px-1 py-0 h-4">
-                              {prop.source_count} diffusions
-                            </Badge>
-                          )}
-                        </div>
-                        <DimensionBadges
-                          className="mt-1.5"
-                          sellerType={prop.seller_type}
-                          undervaluationPct={prop.undervaluation_pct}
-                          dpe={prop.dpe}
-                          status={prop.status}
-                        />
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5 shrink-0" />
-                          {prop.city}{prop.zipcode ? ` (${prop.zipcode})` : ''}
-                        </div>
-                      </td>
-                      <td className="p-4 text-right font-medium">
-                        {formatPrice(prop.price)}
-                        {prop.status === 'price_drop' || prop.status === 'prix_en_baisse' ? (
-                          <div className="flex items-center justify-end gap-0.5 text-destructive text-xs">
-                            <ArrowUpRight className="h-3 w-3 rotate-180" />
-                            baisse
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="p-4 text-right text-muted-foreground">
-                        {prop.surface ? `${prop.surface} m²` : '—'}
-                      </td>
-                      <td className="p-4 text-right text-muted-foreground text-xs">
-                        {prop.price_per_m2 ? `${new Intl.NumberFormat('fr-FR').format(prop.price_per_m2)} €/m²` : '—'}
-                      </td>
-                      <td className="p-4 text-center">
-                        {dpe && DPE_COLORS[dpe] ? (
-                          <Badge variant="outline" className={cn('text-[10px] px-1.5', DPE_COLORS[dpe])}>
-                            {dpe}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-center">
-                        {badge ? (
-                          <Badge variant={badge.variant} className="text-xs">
-                            {badge.label}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground capitalize">{prop.status ?? '—'}</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-center">
-                        {prop.mandate_score ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="inline-flex flex-col items-center gap-1 cursor-help">
-                                <span className="text-sm font-semibold tabular-nums">{prop.mandate_score.score}</span>
-                                <SellerPhaseBadge phase={prop.mandate_score.phase} />
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="w-56">
-                              <p className="font-medium mb-1.5">
-                                Détail du score — à étudier au cas par cas
-                              </p>
-                              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-                                <span>Temps en ligne</span>
-                                <span className="text-right tabular-nums">
-                                  {prop.mandate_score.days_online} j · {prop.mandate_score.time_score}/40
-                                </span>
-                                <span>Baisses de prix</span>
-                                <span className="text-right tabular-nums">
-                                  {prop.mandate_score.price_drops_count} · {prop.mandate_score.frustration_score}/30
-                                </span>
-                                <span>Intensité baisse</span>
-                                <span className="text-right tabular-nums">
-                                  {prop.mandate_score.total_drop_percent}% · {prop.mandate_score.drop_intensity_score}/15
-                                </span>
-                                <span>Comportement</span>
-                                <span className="text-right tabular-nums">
-                                  {prop.mandate_score.behavior_score}/15
-                                </span>
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-                          <Timer className="h-3 w-3" />
-                          {days !== null ? `${days}j` : '—'}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-[160px]">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/app/properties/${prop.id}`}>
-                                <Eye className="h-4 w-4 mr-2" /> Détail
-                              </Link>
-                            </DropdownMenuItem>
-                            {prop.url && (
-                              <DropdownMenuItem asChild>
-                                <a href={prop.url} target="_blank" rel="noopener noreferrer">
-                                  <ArrowUpRight className="h-4 w-4 mr-2" /> Voir l'annonce
-                                </a>
-                              </DropdownMenuItem>
-                            )}
-                            {prop.opportunity ? (
-                              <DropdownMenuItem asChild>
-                                <Link href={`/app/properties/${prop.id}`}>
-                                  <Building2 className="h-4 w-4 mr-2" /> Fiche CRM
-                                </Link>
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                onClick={() => createOpportunity(prop)}
-                                disabled={creatingOppId === prop.id}
-                              >
-                                <Building2 className="h-4 w-4 mr-2" /> Créer une opportunité
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem>
-                              <Star className="h-4 w-4 mr-2" /> Marquer
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-amber-600">
-                              <Flag className="h-4 w-4 mr-2" /> Signaler
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          {!loading && filtered.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Home className="h-12 w-12 text-muted-foreground/30 mb-3" />
-              <p className="text-sm font-medium">Aucun bien trouvé</p>
-              <p className="text-xs text-muted-foreground mt-1">Essayez de modifier vos filtres</p>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-36 rounded-full bg-secondary/50 border-none text-xs font-semibold">
+                  <SelectValue placeholder="Statut" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs font-medium">Tous les statuts</SelectItem>
+                  <SelectItem value="active" className="text-xs font-medium">Actif</SelectItem>
+                  <SelectItem value="price_drop" className="text-xs font-medium">Prix en baisse</SelectItem>
+                  <SelectItem value="new" className="text-xs font-medium">Nouveau</SelectItem>
+                  <SelectItem value="opportunity" className="text-xs font-medium">Opportunité</SelectItem>
+                  <SelectItem value="stagnant" className="text-xs font-medium">Stagne</SelectItem>
+                  <SelectItem value="expired" className="text-xs font-medium">Expiré</SelectItem>
+                  <SelectItem value="removed" className="text-xs font-medium">Retiré</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={cityFilter} onValueChange={setCityFilter}>
+                <SelectTrigger className="h-9 w-36 rounded-full bg-secondary/50 border-none text-xs font-semibold">
+                  <SelectValue placeholder="Ville" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs font-medium">Toutes les villes</SelectItem>
+                  {cities.map((c) => <SelectItem key={c} value={c} className="text-xs font-medium">{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-9 w-36 rounded-full bg-secondary/50 border-none text-xs font-semibold">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs font-medium">Tous les types</SelectItem>
+                  {types.map((t) => <SelectItem key={t} value={t} className="text-xs font-medium">{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={phaseFilter} onValueChange={(v) => setPhaseFilter(v as 'all' | SellerPhase)}>
+                <SelectTrigger className="h-9 w-36 rounded-full bg-secondary/50 border-none text-xs font-semibold">
+                  <SelectValue placeholder="Phase" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs font-medium">Toutes les phases</SelectItem>
+                  <SelectItem value="golden" className="text-xs font-medium">Fenêtre d&apos;or</SelectItem>
+                  <SelectItem value="hot" className="text-xs font-medium">Chaud</SelectItem>
+                  <SelectItem value="warm" className="text-xs font-medium">Tiède</SelectItem>
+                  <SelectItem value="cold" className="text-xs font-medium">Froid</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={sellerFilter} onValueChange={(v) => setSellerFilter(v as 'all' | 'individual' | 'agency')}>
+                <SelectTrigger className="h-9 w-36 rounded-full bg-secondary/50 border-none text-xs font-semibold">
+                  <SelectValue placeholder="Vendeur" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs font-medium">Tous les vendeurs</SelectItem>
+                  <SelectItem value="individual" className="text-xs font-medium">Particulier</SelectItem>
+                  <SelectItem value="agency" className="text-xs font-medium">Agence</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          }
+        />
+
+        {/* 2-Column Grid Layout: Left Table + Right Map */}
+        <div className="grid gap-6 lg:grid-cols-12">
+          {/* Left Column: Properties Table */}
+          <div className="space-y-4 lg:col-span-7 xl:col-span-8">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                {sorted.length} résultat{sorted.length !== 1 ? 's' : ''}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground font-medium">Trier par :</span>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                  <SelectTrigger className="h-8 w-[140px] text-xs font-semibold rounded-full bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mandate_score" className="text-xs font-medium">Score mandat</SelectItem>
+                    <SelectItem value="last_seen_at" className="text-xs font-medium">Dernière vue</SelectItem>
+                    <SelectItem value="price" className="text-xs font-medium">Prix</SelectItem>
+                    <SelectItem value="surface" className="text-xs font-medium">Surface</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
+                >
+                  <ArrowUpDown className="size-3.5" />
+                </Button>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+
+            <div className="overflow-hidden rounded-2xl border bg-card shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-muted-foreground font-bold">
+                      <th className="px-4 py-3 text-left">BIEN</th>
+                      <th className="px-4 py-3 text-left">LOCALISATION</th>
+                      <th className="px-4 py-3 text-right">PRIX</th>
+                      <th className="px-4 py-3 text-right">SURFACE</th>
+                      <th className="px-4 py-3 text-center">STATUT</th>
+                      <th className="px-4 py-3 text-center">SCORE</th>
+                      <th className="w-12 px-4 py-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {loading && (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-xs text-muted-foreground font-medium">
+                          Chargement des biens…
+                        </td>
+                      </tr>
+                    )}
+                    {!loading && sorted.map((prop) => {
+                      const badge = STATUS_BADGES[prop.status ?? '']
+                      const days = daysOnline(prop.first_seen_at)
+                      return (
+                        <tr
+                          key={prop.id}
+                          className="border-b last:border-0 hover:bg-muted/40 font-medium transition-colors"
+                        >
+                          <td className="p-4">
+                            <Link
+                              href={`/admin/market/properties/${prop.id}`}
+                              className="font-bold text-foreground hover:text-primary transition-colors text-sm"
+                            >
+                              {prop.title || 'Bien sans titre'}
+                            </Link>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              {prop.property_type && (
+                                <Badge variant="outline" className="text-[10px] font-bold rounded-full px-2 py-0">
+                                  {prop.property_type}
+                                </Badge>
+                              )}
+                              {prop.rooms ? (
+                                <span className="text-xs text-muted-foreground">{prop.rooms} pièces</span>
+                              ) : null}
+                            </div>
+                            <DimensionBadges
+                              className="mt-1.5"
+                              sellerType={prop.seller_type}
+                              undervaluationPct={prop.undervaluation_pct}
+                              dpe={prop.dpe}
+                              status={prop.status}
+                            />
+                          </td>
+                          <td className="p-4 text-muted-foreground font-medium whitespace-nowrap">
+                            <div className="flex items-center gap-1">
+                              <MapPin className="size-3.5 shrink-0 text-primary" />
+                              {prop.city}{prop.zipcode ? ` (${prop.zipcode})` : ''}
+                            </div>
+                          </td>
+                          <td className="p-4 text-right font-bold text-foreground text-sm whitespace-nowrap">
+                            {formatPrice(prop.price)}
+                            {prop.status === 'price_drop' || prop.status === 'prix_en_baisse' ? (
+                              <div className="flex items-center justify-end gap-0.5 text-destructive text-xs font-bold">
+                                <ArrowUpRight className="size-3 rotate-180" />
+                                baisse
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="p-4 text-right text-muted-foreground font-semibold whitespace-nowrap">
+                            {prop.surface ? `${prop.surface} m²` : '—'}
+                          </td>
+                          <td className="p-4 text-center">
+                            {badge ? (
+                              <Badge variant={badge.variant} className="text-xs font-bold rounded-full px-2.5 py-0.5">
+                                {badge.label}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground capitalize">{prop.status ?? '—'}</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-center">
+                            {prop.mandate_score ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="inline-flex flex-col items-center gap-1 cursor-help">
+                                    <span className="text-sm font-bold tabular-nums text-foreground">{prop.mandate_score.score}</span>
+                                    <SellerPhaseBadge phase={prop.mandate_score.phase} />
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="w-56 p-3 rounded-xl">
+                                  <p className="font-bold text-xs mb-1.5">
+                                    Détail du score vendeur
+                                  </p>
+                                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                    <span>Temps en ligne</span>
+                                    <span className="text-right tabular-nums text-foreground">
+                                      {prop.mandate_score.days_online} j · {prop.mandate_score.time_score}/40
+                                    </span>
+                                    <span>Baisses de prix</span>
+                                    <span className="text-right tabular-nums text-foreground">
+                                      {prop.mandate_score.price_drops_count} · {prop.mandate_score.frustration_score}/30
+                                    </span>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                                  <MoreHorizontal className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48 rounded-xl p-1.5 shadow-xs">
+                                <DropdownMenuItem asChild className="rounded-lg text-xs font-bold py-2 cursor-pointer">
+                                  <Link href={`/admin/market/properties/${prop.id}`}>
+                                    <Eye className="size-4 mr-2" /> Ouvrir le bien
+                                  </Link>
+                                </DropdownMenuItem>
+                                {prop.url && (
+                                  <DropdownMenuItem asChild className="rounded-lg text-xs font-medium py-2 cursor-pointer">
+                                    <a href={prop.url} target="_blank" rel="noopener noreferrer">
+                                      <ArrowUpRight className="size-4 mr-2" /> Voir l'annonce
+                                    </a>
+                                  </DropdownMenuItem>
+                                )}
+                                {prop.opportunity ? (
+                                  <DropdownMenuItem asChild className="rounded-lg text-xs font-bold py-2 cursor-pointer">
+                                    <Link href={`/admin/market/opportunities/${prop.opportunity.id}`}>
+                                      <Building2 className="size-4 mr-2 text-amber-500" /> Ouvrir le projet
+                                    </Link>
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem
+                                    onClick={() => void createOpportunity(prop)}
+                                    disabled={creatingOppId === prop.id}
+                                    className="rounded-lg text-xs font-bold py-2 cursor-pointer"
+                                  >
+                                    <Building2 className="size-4 mr-2 text-primary" /> Créer un projet
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="rounded-lg text-xs font-medium py-2 text-amber-700 cursor-pointer">
+                                  <Flag className="size-4 mr-2" /> Signaler
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {!loading && filtered.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Home className="size-10 text-muted-foreground/40 mb-2" />
+                  <p className="text-sm font-bold text-foreground">Aucun bien trouvé</p>
+                  <p className="text-xs text-muted-foreground font-medium mt-0.5">Essayez de modifier vos filtres ou la recherche.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Sticky Map Panel */}
+          {mapWrapper ? (
+            <div className="lg:col-span-5 xl:col-span-4">
+              <div className="sticky top-6 rounded-2xl border bg-card p-4 shadow-xs space-y-3">
+                <div className="flex items-center justify-between border-b pb-3">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <MapPin className="size-4 text-primary" />
+                    Carte du secteur
+                  </h3>
+                </div>
+                {mapWrapper}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </PageSection>
+    </PageLayout>
   )
 }

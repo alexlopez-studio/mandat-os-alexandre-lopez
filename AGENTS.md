@@ -7,9 +7,30 @@ l'accessibilite et la coherence visuelle de l'application.
 
 Avant de modifier l'interface, lire :
 
-- `docs/DESIGN_UX_GUIDELINES.md`
-- `docs/BRAND.md`
-- **Design System** : Se référer systématiquement à `src/app/admin/market/design-system/page.tsx` comme source de vérité (Single Source of Truth) pour garantir la cohérence et l'harmonie de l'interface (composants, boutons, couleurs, tailles). Ne jamais inventer de nouveaux composants d'interface sans vérifier s'ils existent déjà dans ce guide.
+- **`docs/DESIGN.md`** — regles de mise en page et de coherence visuelle. Fait autorite.
+  Toute page ou composant qui le contredit est un bug.
+- `docs/BRAND.md` — couleurs, typographie, ton. Autoritaire en cas de conflit avec `DESIGN.md`.
+- `docs/DESIGN_UX_GUIDELINES.md` — principes UX produit.
+
+Regles non negociables (detail dans `docs/DESIGN.md`) :
+
+- une page = `<PageLayout>` + primitives de `@/components/pro`. Pas de layout improvise
+  dans un `page.tsx` ;
+- un besoin non couvert par une primitive → **ajouter une primitive** dans
+  `src/components/pro/`, jamais un `<div className="…">` dans la page ;
+- zero couleur brute (`bg-white`, `text-gray-500`), zero valeur arbitraire (`text-[15px]`),
+  espacements dans l'echelle `2 / 4 / 6 / 8` ;
+- pages de reference : `src/app/admin/market/contacts/page.tsx` et
+  `src/app/admin/market/opportunities/OpportunitiesWorkspace.tsx`.
+
+Avant de conclure une tache qui touche l'interface :
+
+```bash
+npm run lint:design:changed
+```
+
+Toute page nouvelle ou reecrite doit sortir a zero violation. Les pages anciennes
+portent encore de la dette, non bloquante.
 
 Branche de travail :
 

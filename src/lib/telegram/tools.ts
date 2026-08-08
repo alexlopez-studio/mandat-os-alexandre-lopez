@@ -1,5 +1,10 @@
 import type { AiToolDefinition } from '@/lib/ai/gateway'
 import {
+  executeGoogleTool,
+  GOOGLE_TOOL_DEFINITIONS,
+  GOOGLE_TOOL_NAMES,
+} from '@/lib/google/tools'
+import {
   addNoteOrTask,
   createProject,
   projetLabel,
@@ -132,6 +137,8 @@ export const TOOL_DEFINITIONS: AiToolDefinition[] = [
       additionalProperties: false,
     },
   },
+  // Outils Google, partagés avec l'assistant web (lecture seule).
+  ...GOOGLE_TOOL_DEFINITIONS,
 ]
 
 export type ToolContext = { chatId: number; sourceText: string }
@@ -145,6 +152,12 @@ export type ToolOutcome = {
 
 /** Exécute un outil demandé par le modèle. Ne lève jamais : renvoie l'erreur au modèle. */
 export async function executeTool(name: string, rawArgs: string, ctx: ToolContext): Promise<ToolOutcome> {
+  // Les outils Google sont partagés avec l'assistant web et n'écrivent jamais
+  // en base : ils ne produisent donc pas d'`operation` à récapituler.
+  if (GOOGLE_TOOL_NAMES.has(name)) {
+    return { result: await executeGoogleTool(name, rawArgs) }
+  }
+
   let args: Record<string, any>
   try {
     args = JSON.parse(rawArgs || '{}')

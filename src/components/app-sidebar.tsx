@@ -47,8 +47,6 @@ const PILOTAGE_ITEMS: SidebarNavItem[] = [
 const OPPORTUNITY_ITEMS: SidebarNavItem[] = [
   { title: "Contacts", url: "/app/contacts", icon: UserPlusIcon },
   { title: "Projets", url: "/app/opportunities", icon: KanbanIcon },
-  { title: "Leads entrants", url: "/app/leads", icon: KanbanIcon },
-  { title: "Réseau", url: "/app/liste-chaude", icon: FlameIcon },
   { title: "Imports estimation", url: "/app/estimation-imports", icon: SparklesIcon },
 ]
 
@@ -74,15 +72,6 @@ export function AppSidebar({ role, email, ...props }: AppSidebarProps) {
     if (href === '/app/dashboard') return pathname === href
     return pathname.startsWith(href)
   }
-
-  const isDevOrPreview = process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview'
-  const configItems = isDevOrPreview
-    ? [
-        CONFIG_ITEMS[0],
-        { title: 'Design System', url: '/app/design-system', icon: PaletteIcon },
-        ...CONFIG_ITEMS.slice(1),
-      ]
-    : CONFIG_ITEMS
 
   const withActiveState = (items: SidebarNavItem[]) =>
     items.map((item) => ({
@@ -112,7 +101,7 @@ export function AppSidebar({ role, email, ...props }: AppSidebarProps) {
         <NavMain title="Pilotage" items={withActiveState(PILOTAGE_ITEMS)} />
         <NavMain title="Affaires" items={withActiveState(OPPORTUNITY_ITEMS)} />
         <NavMain title="Marché" items={withActiveState(MARKET_ITEMS)} />
-        <NavMain title="Configuration" items={withActiveState(configItems)} />
+        <NavMain title="Configuration" items={withActiveState(CONFIG_ITEMS)} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser

@@ -1,5 +1,9 @@
 # Consignes design & UX — Codex
 
+> Ce document porte les **principes UX**. Les regles mecaniques de mise en page
+> (primitives, tokens, echelle d'espacement, largeurs, etats) sont dans
+> **`docs/DESIGN.md`**, qui fait autorite et est verifie par `npm run lint:design`.
+
 ## Role
 
 Codex agit comme designer produit et ingenieur front-end. Son objectif est de rendre le logiciel clair, rapide a comprendre, agreable a utiliser et coherent avec le positionnement premium d'Alex Lopez Provence.

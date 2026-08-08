@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+import { Loader2 } from 'lucide-react'
+
 import { OpportunitiesWorkspace } from './OpportunitiesWorkspace'
 
 export const metadata: Metadata = {
@@ -8,17 +10,14 @@ export const metadata: Metadata = {
 
 export default function OpportunitiesPage() {
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Projets</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Le cycle complet d’une affaire : de l’opportunité au mandat signé, côté vendeurs et acquéreurs.
-        </p>
-      </div>
-
-      <Suspense fallback={<div className="text-sm text-muted-foreground">Chargement des opportunités...</div>}>
-        <OpportunitiesWorkspace />
-      </Suspense>
-    </div>
+    <Suspense
+      fallback={
+        <div className="flex h-40 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <OpportunitiesWorkspace />
+    </Suspense>
   )
 }

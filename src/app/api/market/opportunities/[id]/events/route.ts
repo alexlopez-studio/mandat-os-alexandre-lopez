@@ -42,14 +42,14 @@ export async function POST(
     const { id } = await params
     const body = await req.json()
 
-    const { data: opportunity, error: opportunityError } = await supabaseAdmin
-      .from('opportunities')
+    const { data: project, error: projectError } = await supabaseAdmin
+      .from('projects')
       .select('id')
       .eq('id', id)
       .single()
 
-    if (opportunityError || !opportunity) {
-      return NextResponse.json({ error: 'Opportunité introuvable' }, { status: 404 })
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Projet introuvable' }, { status: 404 })
     }
 
     const requestedType = asText(body.type) as ActivityType | null

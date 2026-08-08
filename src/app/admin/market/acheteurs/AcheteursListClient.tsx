@@ -247,7 +247,7 @@ export function AcheteursListClient() {
                             className="h-8 w-8"
                             asChild
                           >
-                            <Link href={`/app/acheteurs/${buyer.lead_id}`}>
+                            <Link href={`/app/acheteurs/${buyer.lead_id || buyer.id}`}>
                               <Pencil className="h-3.5 w-3.5" />
                             </Link>
                           </Button>
@@ -255,7 +255,7 @@ export function AcheteursListClient() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
-                            onClick={() => toggleActive(buyer.lead_id, buyer.active)}
+                            onClick={() => toggleActive(buyer.lead_id || buyer.id, buyer.active)}
                             title={buyer.active ? 'Désactiver' : 'Réactiver'}
                           >
                             {buyer.active ? (
@@ -268,7 +268,7 @@ export function AcheteursListClient() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 hover:text-destructive"
-                            onClick={() => softDelete(buyer.lead_id)}
+                            onClick={() => softDelete(buyer.lead_id || buyer.id)}
                             title="Désactiver"
                           >
                             <Trash2 className="h-3.5 w-3.5" />

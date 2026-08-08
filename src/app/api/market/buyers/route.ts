@@ -23,7 +23,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { runMatchingForBuyer } from '@/lib/market/matching-engine'
 import { upsertCrmProspect } from '@/lib/leads-crm'
-import crypto from 'crypto'
 
 const BUYER_STAGES = [
   'Nouveau contact',
@@ -100,39 +99,45 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { type_bien, communes, budget_max, surface_min, pieces_min, criteres, active } = body
-    const email = parseText(body.email)?.toLowerCase() ?? null
-    const firstName = parseText(body.first_name)
-    const lastName = parseText(body.last_name)
-    const phone = parseText(body.phone)
+    const email = parseText(body.email || body.contact?.email)?.toLowerCase() ?? null
+    const firstName = parseText(body.first_name || body.contact?.first_name)
+    const lastName = parseText(body.last_name || body.contact?.last_name)
+    const phone = parseText(body.phone || body.contact?.phone)
     const existingLeadId = parseText(body.lead_id)
     let prospectId = parseText(body.prospect_id)
+    const contactIdsPayload: string[] = Array.isArray(body.contact_ids) ? body.contact_ids.filter(Boolean) : []
 
     // Validation basique
-    if (!type_bien && !communes?.length && !budget_max && !email && !phone && !firstName && !lastName && !existingLeadId && !prospectId) {
+    if (!type_bien && !communes?.length && !budget_max && !email && !phone && !firstName && !lastName && !existingLeadId && !prospectId && contactIdsPayload.length === 0) {
       return NextResponse.json(
         { error: 'Au moins un contact ou un critère est requis' },
         { status: 400 }
       )
     }
 
-    const lead_id = existingLeadId ?? `admin_${crypto.randomUUID()}`
+    const isValidUuid = (val: string | null): boolean =>
+      Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
 
-    const { data: existingBuyer, error: existingBuyerError } = await supabaseAdmin
-      .from('buyer_criteria')
-      .select('*')
-      .eq('lead_id', lead_id)
-      .maybeSingle()
+    const lead_id = isValidUuid(existingLeadId) ? existingLeadId : null
 
-    if (existingBuyerError) {
-      console.error('[API /market/buyers] existing lookup error:', existingBuyerError)
-      return NextResponse.json({ error: 'Erreur vérification acquéreur existant' }, { status: 500 })
+    if (lead_id) {
+      const { data: existingBuyer, error: existingBuyerError } = await supabaseAdmin
+        .from('buyer_criteria')
+        .select('*')
+        .eq('lead_id', lead_id)
+        .maybeSingle()
+
+      if (existingBuyerError) {
+        console.error('[API /market/buyers] existing lookup error:', existingBuyerError)
+        return NextResponse.json({ error: 'Erreur vérification acquéreur existant' }, { status: 500 })
+      }
+
+      if (existingBuyer) {
+        return NextResponse.json({ buyer: existingBuyer, success: true, existing: true })
+      }
     }
 
-    if (existingBuyer) {
-      return NextResponse.json({ buyer: existingBuyer, success: true, existing: true })
-    }
-
-    if (existingLeadId && !prospectId) {
+    if (existingLeadId && isValidUuid(existingLeadId) && !prospectId) {
       const { data: lead, error: leadError } = await supabaseAdmin
         .from('leads')
         .select('prospect_id')
@@ -147,18 +152,63 @@ export async function POST(req: NextRequest) {
       prospectId = lead?.prospect_id ?? null
     }
 
+    // 1. Si nouveau contact fourni, créer ou récupérer dans la table `contacts` (annuaire des contacts)
+    let createdContactId: string | null = null
+    if (!prospectId && (firstName || lastName || email || phone)) {
+      if (email) {
+        const { data: existingByEmail } = await supabaseAdmin
+          .from('contacts')
+          .select('id')
+          .eq('email', email)
+          .maybeSingle()
+        if (existingByEmail?.id) createdContactId = existingByEmail.id
+      } else if (phone) {
+        const { data: existingByPhone } = await supabaseAdmin
+          .from('contacts')
+          .select('id')
+          .eq('phone', phone)
+          .maybeSingle()
+        if (existingByPhone?.id) createdContactId = existingByPhone.id
+      }
+
+      if (!createdContactId) {
+        const { data: newContact, error: contactInsertError } = await supabaseAdmin
+          .from('contacts')
+          .insert({
+            first_name: firstName || 'Inconnu',
+            last_name: lastName || '',
+            email,
+            phone,
+            source: 'buyer',
+            types: ['acquereur'],
+          })
+          .select('id')
+          .single()
+
+        if (contactInsertError) {
+          console.error('[API /market/buyers] contacts insert error:', contactInsertError)
+        } else if (newContact) {
+          createdContactId = newContact.id
+        }
+      }
+    }
+
+    // 2. Créer ou mettre à jour dans `prospects` pour la gestion CRM/Leads
     const prospect = !prospectId && (email || phone || firstName || lastName)
       ? await upsertCrmProspect({
           email,
           firstName,
           lastName,
           phone,
+        }).catch((err) => {
+          console.error('[API /market/buyers] prospect creation error:', err)
+          return null
         })
       : null
 
     const buyerData = {
       lead_id,
-      prospect_id: prospectId ?? prospect?.id ?? null,
+      prospect_id: prospectId ?? prospect?.id ?? createdContactId ?? null,
       type_bien: typeof type_bien === 'string' ? type_bien : null,
       communes: Array.isArray(communes) ? communes : null,
       budget_max: typeof budget_max === 'number' ? budget_max : null,
@@ -182,10 +232,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Erreur lors de la création' }, { status: 500 })
     }
 
+    const finalContactIds: string[] = [...contactIdsPayload]
+    if (prospectId && !finalContactIds.includes(prospectId)) {
+      finalContactIds.push(prospectId)
+    }
+    if (prospect && !finalContactIds.includes(prospect.id)) {
+      finalContactIds.push(prospect.id)
+    }
+    if (createdContactId && !finalContactIds.includes(createdContactId)) {
+      finalContactIds.push(createdContactId)
+    }
+
+    if (finalContactIds.length > 0) {
+      const inserts = finalContactIds.map((id, index) => ({
+        contact_id: id,
+        buyer_criteria_id: data.id,
+        role: index === 0 && finalContactIds.length === 1 ? 'Acquéreur unique' : (index === 0 ? 'Acquéreur principal' : 'Co-acquéreur')
+      }))
+      const { error: pcError } = await supabaseAdmin.from('project_contacts').insert(inserts)
+      if (pcError) {
+        console.error('[API /market/buyers] project_contacts insert error:', pcError)
+      }
+    }
+
     // Lancer le matching en arrière-plan (non bloquant)
-    runMatchingForBuyer(buyerData).catch((err) =>
-      console.error('[API /market/buyers] Erreur matching:', err)
-    )
+    if (data.lead_id || data.id) {
+      const criteriaForMatching = { ...buyerData, lead_id: data.lead_id || data.id }
+      runMatchingForBuyer(criteriaForMatching).catch((err) =>
+        console.error('[API /market/buyers] Erreur matching:', err)
+      )
+    }
 
     return NextResponse.json({ buyer: data, success: true }, { status: 201 })
   } catch (e) {

@@ -142,7 +142,7 @@ function SortableBuyerCard({ buyer }: { buyer: BuyerCriteria }) {
 
   function openCard() {
     if (isDragging) return
-    router.push(`/app/acheteurs/${buyer.lead_id}`)
+    router.push(`/app/acheteurs/${buyer.lead_id || buyer.id}`)
   }
 
   return (

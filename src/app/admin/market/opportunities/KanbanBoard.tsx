@@ -341,7 +341,7 @@ function SortableOpportunityCard({
     : null
   function openCard() {
     if (isDragging) return
-    router.push(`/app/opportunities/${opportunity.id}`)
+    router.push(`/admin/market/opportunities/${opportunity.id}`)
   }
 
   return (
@@ -749,7 +749,7 @@ export function KanbanBoard({ search, stageFilter, dueFilter }: KanbanBoardProps
       toast.success(data.existing ? 'Opportunité déjà existante' : 'Opportunité créée')
       setDialogOpen(false)
       await load()
-      if (data.opportunity?.id) router.push(`/app/opportunities/${data.opportunity.id}`)
+      if (data.opportunity?.id) router.push(`/admin/market/opportunities/${data.opportunity.id}`)
     } catch (err) {
       console.error('Erreur création opportunité:', err)
       toast.error('Impossible de créer l’opportunité')
