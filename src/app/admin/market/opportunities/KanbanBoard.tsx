@@ -365,8 +365,8 @@ function SortableOpportunityCard({
       )}
     >
       <Card className="hover:shadow-md transition-shadow pointer-events-none">
-        <CardContent className="p-3">
-          <div className="mb-2 flex items-start justify-end gap-2">
+        <CardContent className="p-2.5">
+          <div className="mb-1.5 flex items-start justify-end gap-2">
             <div className="flex flex-wrap justify-end gap-1.5">
               <Badge variant="outline" className={cn('h-5 px-1.5 py-0 text-[10px]', typeCfg.class)}>
                 <TypeIcon className="mr-1 h-3 w-3" />
@@ -380,10 +380,10 @@ function SortableOpportunityCard({
 
           <p className="mb-1 text-sm font-medium leading-tight">{headline}</p>
           {headline !== opportunity.title && (
-            <p className="mb-2 line-clamp-1 text-xs text-muted-foreground">{opportunity.title}</p>
+            <p className="mb-1.5 line-clamp-1 text-xs text-muted-foreground">{opportunity.title}</p>
           )}
 
-          <div className="mb-3 space-y-1.5 text-xs text-muted-foreground">
+          <div className="mb-2 space-y-1 text-xs text-muted-foreground">
             {(city || propertyType) && (
               <div className="flex items-center gap-1.5">
                 <MapPin className="h-3 w-3 shrink-0" />
@@ -405,9 +405,9 @@ function SortableOpportunityCard({
           </div>
 
           {opportunity.linkedPropertyTitle && (
-            <div className="mb-3 rounded-md bg-muted/30 p-2">
+            <div className="mb-2 rounded-md bg-muted/30 p-1.5">
               <p className="truncate text-xs font-medium">{opportunity.linkedPropertyTitle}</p>
-              <div className="mt-1 flex items-center justify-between gap-2">
+              <div className="mt-0.5 flex items-center justify-between gap-2">
                 <span className="truncate text-[10px] text-muted-foreground">{opportunity.linkedPropertyCity ?? ''}</span>
                 {opportunity.linkedPropertyPrice != null && (
                   <span className="text-xs font-medium">{formatPrice(opportunity.linkedPropertyPrice)}</span>
@@ -417,7 +417,7 @@ function SortableOpportunityCard({
           )}
 
           {opportunity.nextAction && (
-            <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
               <ArrowUpRight className="h-3 w-3 shrink-0" />
               <span className="line-clamp-1">{opportunity.nextAction}</span>
             </div>
@@ -444,9 +444,9 @@ function OpportunityCardOverlay({ opportunity }: { opportunity: Opportunity }) {
   const TypeIcon = typeCfg.icon
 
   return (
-    <Card className="w-72 rotate-3 shadow-xl opacity-90">
-      <CardContent className="p-3">
-        <div className="mb-2 flex items-center gap-1.5">
+    <Card className="w-64 rotate-3 shadow-xl opacity-90">
+      <CardContent className="p-2.5">
+        <div className="mb-1.5 flex items-center gap-1.5">
           <Badge variant="outline" className={cn('h-5 px-1.5 py-0 text-[10px]', typeCfg.class)}>
             <TypeIcon className="mr-1 h-3 w-3" />
             {typeCfg.label}
@@ -770,8 +770,8 @@ export function KanbanBoard({ search, stageFilter, dueFilter }: KanbanBoardProps
           {PIPELINE_STAGES.map((stage) => {
             const stageOpps = getStageOpps(stage.id)
             return (
-              <div key={stage.id} className="w-72 flex-shrink-0">
-                <div className="mb-3 flex items-center justify-between px-1">
+              <div key={stage.id} className="w-64 flex-shrink-0">
+                <div className="mb-2 flex items-center justify-between px-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <div className={cn('h-2 w-2 shrink-0 rounded-full', stage.color)} />
                     <span className="truncate text-sm font-medium">{stage.label}</span>

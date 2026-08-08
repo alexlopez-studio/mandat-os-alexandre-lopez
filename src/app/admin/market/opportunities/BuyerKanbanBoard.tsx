@@ -228,8 +228,8 @@ function SortableBuyerCard({ buyer }: { buyer: BuyerCriteria }) {
 
 function BuyerCardOverlay({ buyer }: { buyer: BuyerCriteria }) {
   return (
-    <Card className="w-72 rotate-3 shadow-xl opacity-90">
-      <CardContent className="p-3">
+    <Card className="w-64 rotate-3 shadow-xl opacity-90">
+      <CardContent className="p-2.5">
         <p className="text-sm font-medium">{buyerTitle(buyer)}</p>
         <p className="mt-1 truncate text-xs text-muted-foreground">
           {buyer.communes?.join(', ') || 'Commune à qualifier'} · {formatPrice(buyer.budget_max)}
@@ -363,8 +363,8 @@ export function BuyerKanbanBoard({ search, stageFilter, activeFilter, dueFilter 
           {BUYER_STAGES.map((stage) => {
             const columnBuyers = buyersByStage[stage.id] ?? []
             return (
-              <div key={stage.id} className="w-72 shrink-0">
-                <div className="mb-3 flex items-center justify-between">
+              <div key={stage.id} className="w-64 shrink-0">
+                <div className="mb-1.5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className={cn('h-2.5 w-2.5 rounded-full', stage.color)} />
                     <h2 className="text-sm font-semibold">{stage.label}</h2>
