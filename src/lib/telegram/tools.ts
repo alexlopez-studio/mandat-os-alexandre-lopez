@@ -1,131 +1,129 @@
 import type { AiToolDefinition } from '@/lib/ai/gateway'
 import {
   addNoteOrTask,
-  createBuyer,
-  createSeller,
-  dossierLabel,
+  createProject,
+  projetLabel,
   findSimilarOpenTask,
-  getDossier,
-  readDossierDetail,
-  searchDossiers,
+  getProject,
+  readProjectDetail,
+  searchContacts,
+  searchProjects,
   updateTask,
   type AppliedOperation,
 } from '@/lib/telegram/crm'
 
 /**
  * Outils mis à disposition de l'agent.
- *
- * Les deux premiers sont en lecture : ce sont eux qui remplacent la liste
- * figée de l'ancienne version et permettent à l'agent de vérifier lui-même
- * si une personne existe avant d'en créer une seconde.
  */
 export const TOOL_DEFINITIONS: AiToolDefinition[] = [
   {
-    name: 'chercher_dossier',
+    name: 'chercher_contact',
     description:
-      "Cherche un vendeur ou un acquéreur dans le CRM par nom ou par ville. À appeler SYSTÉMATIQUEMENT avant de créer un contact, pour vérifier qu'il n'existe pas déjà, et avant d'ajouter une note pour retrouver le bon dossier.",
+      "Recherche un contact existant par son nom (et éventuellement sa ville). Renvoie l'identifiant du contact. Utile avant de créer un projet pour éviter les doublons de contacts.",
     parameters: {
       type: 'object',
       properties: {
-        nom: { type: 'string', description: "Nom de la personne ou nom de commune. Sans civilité." },
+        nom: { type: 'string', description: 'Nom de la personne (sans civilité).' },
+        ville: { type: 'string', description: 'Ville éventuelle pour affiner.' },
       },
       required: ['nom'],
       additionalProperties: false,
     },
   },
   {
-    name: 'lire_dossier',
+    name: 'chercher_projet',
     description:
-      "Renvoie la fiche complète d'un dossier et ses 8 derniers événements : coordonnées, budget ou prix, étape, notes et tâches déjà enregistrées. Utile pour savoir ce qui est déjà connu avant d'ajouter quoi que ce soit.",
+      "Cherche un projet (vente ou achat) associé à un contact par nom ou ville. À appeler SYSTÉMATIQUEMENT avant d'ajouter une note pour retrouver le bon projet.",
     parameters: {
       type: 'object',
       properties: {
-        dossier_id: { type: 'string', description: 'Identifiant renvoyé par chercher_dossier.' },
+        nom: { type: 'string', description: 'Nom de la personne ou nom de commune. Sans civilité.' },
       },
-      required: ['dossier_id'],
+      required: ['nom'],
       additionalProperties: false,
     },
   },
   {
-    name: 'creer_vendeur',
+    name: 'lire_projet',
     description:
-      "Crée une opportunité vendeur. N'appeler qu'après avoir vérifié via chercher_dossier que la personne n'existe pas déjà.",
+      "Renvoie la fiche complète d'un projet et ses 8 derniers événements : coordonnées, budget ou prix, étape, notes et tâches déjà enregistrées. Utile pour savoir ce qui est déjà connu avant d'ajouter quoi que ce soit.",
     parameters: {
       type: 'object',
       properties: {
-        nom: { type: 'string' },
+        projet_id: { type: 'string', description: 'Identifiant renvoyé par chercher_projet.' },
+      },
+      required: ['projet_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'creer_projet',
+    description:
+      "Crée un projet (vente ou achat) et le contact associé s'il n'existe pas. N'appeler qu'après avoir vérifié que le projet n'existe pas déjà.",
+    parameters: {
+      type: 'object',
+      properties: {
+        type: { type: 'string', description: "Type de projet : 'vente' ou 'achat'." },
+        nom: { type: 'string', description: 'Nom du contact principal.' },
         ville: { type: 'string' },
         telephone: { type: 'string' },
         email: { type: 'string' },
         type_bien: { type: 'string', description: 'maison, appartement, terrain…' },
-        prix: { type: 'number', description: "Prix souhaité en euros. 250 signifie 250000." },
+        prix_ou_budget: { type: 'number', description: 'Prix ou budget max en euros. 250 signifie 250000.' },
         note: { type: 'string', description: 'Contexte utile en une phrase.' },
+        contact_id: {
+          type: 'string',
+          description: "Optionnel, identifiant du contact s'il a été trouvé via chercher_contact.",
+        },
       },
-      required: ['nom'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'creer_acquereur',
-    description:
-      "Crée un acquéreur avec ses critères de recherche. N'appeler qu'après avoir vérifié via chercher_dossier que la personne n'existe pas déjà.",
-    parameters: {
-      type: 'object',
-      properties: {
-        nom: { type: 'string' },
-        ville: { type: 'string', description: 'Commune recherchée.' },
-        telephone: { type: 'string' },
-        email: { type: 'string' },
-        type_bien: { type: 'string' },
-        budget: { type: 'number', description: "Budget maximum en euros. 250 signifie 250000." },
-        note: { type: 'string' },
-      },
-      required: ['nom'],
+      required: ['type', 'nom'],
       additionalProperties: false,
     },
   },
   {
     name: 'ajouter_note',
-    description: "Enregistre une information sur un dossier existant (vendeur ou acquéreur).",
+    description: 'Enregistre une information sur un projet existant (vente ou achat).',
     parameters: {
       type: 'object',
       properties: {
-        dossier_id: { type: 'string' },
+        projet_id: { type: 'string' },
         contenu: {
           type: 'string',
-          description: "L'information reformulée en français clair, à la troisième personne, sans perdre les chiffres.",
+          description:
+            "L'information reformulée en français clair, à la troisième personne, sans perdre les chiffres.",
         },
       },
-      required: ['dossier_id', 'contenu'],
+      required: ['projet_id', 'contenu'],
       additionalProperties: false,
     },
   },
   {
     name: 'ajouter_tache',
     description:
-      "Enregistre une chose à faire sur un dossier existant. Si une tâche ouverte équivalente existe déjà, elle n'est pas dupliquée : l'échéance fournie y est appliquée, et l'outil te le signale.",
+      "Enregistre une chose à faire sur un projet existant. Si une tâche ouverte équivalente existe déjà, elle n'est pas dupliquée : l'échéance fournie y est appliquée, et l'outil te le signale.",
     parameters: {
       type: 'object',
       properties: {
-        dossier_id: { type: 'string' },
+        projet_id: { type: 'string' },
         contenu: { type: 'string', description: "L'action à mener, à l'infinitif." },
         echeance: {
           type: 'string',
-          description: "Date d'échéance. Le format AAAA-MM-JJ est préféré, mais « 10/08/2026 », « 10 août 2026 », « demain » ou « lundi prochain » sont acceptés. Omise si aucune échéance n'est exprimée.",
+          description:
+            "Date d'échéance. Le format AAAA-MM-JJ est préféré, mais « 10/08/2026 », « 10 août 2026 », « demain » ou « lundi prochain » sont acceptés. Omise si aucune échéance n'est exprimée.",
         },
       },
-      required: ['dossier_id', 'contenu'],
+      required: ['projet_id', 'contenu'],
       additionalProperties: false,
     },
   },
   {
     name: 'modifier_tache',
     description:
-      "Modifie une tâche qui EXISTE DÉJÀ : pose ou déplace son échéance, corrige son libellé, ou la marque comme faite. C'est l'outil à utiliser quand Alexandre dit « ajoute une date », « reporte », « décale », « c'est fait ». Il ne crée jamais rien. L'identifiant s'obtient via lire_dossier.",
+      "Modifie une tâche qui EXISTE DÉJÀ : pose ou déplace son échéance, corrige son libellé, ou la marque comme faite. C'est l'outil à utiliser quand Alexandre dit « ajoute une date », « reporte », « décale », « c'est fait ». Il ne crée jamais rien. L'identifiant s'obtient via lire_projet.",
     parameters: {
       type: 'object',
       properties: {
-        tache_id: { type: 'string', description: 'Identifiant de la tâche, renvoyé par lire_dossier.' },
+        tache_id: { type: 'string', description: 'Identifiant de la tâche, renvoyé par lire_projet.' },
         echeance: { type: 'string', description: "Nouvelle échéance. Mêmes formats qu'ajouter_tache." },
         contenu: { type: 'string', description: 'Nouveau libellé, si le précédent était imprécis.' },
         faite: { type: 'boolean', description: 'true pour marquer la tâche comme faite.' },
@@ -156,51 +154,54 @@ export async function executeTool(name: string, rawArgs: string, ctx: ToolContex
 
   try {
     switch (name) {
-      case 'chercher_dossier': {
-        const found = await searchDossiers(String(args.nom ?? ''))
+      case 'chercher_contact': {
+        const found = await searchContacts(String(args.nom ?? ''))
         return {
           result: JSON.stringify({
-            resultats: found.map((dossier) => ({
-              dossier_id: dossier.id,
-              libelle: dossierLabel(dossier),
-              type: dossier.kind,
-              ville: dossier.city,
-              etape: dossier.stage,
+            resultats: found.map((contact: any) => ({
+              contact_id: contact.id,
+              nom: `${contact.first_name} ${contact.last_name}`.trim(),
+              email: contact.email,
+              telephone: contact.phone,
             })),
             nombre: found.length,
           }),
         }
       }
 
-      case 'lire_dossier': {
-        const detail = await readDossierDetail(String(args.dossier_id ?? ''))
-        return { result: JSON.stringify(detail ?? { erreur: 'Dossier introuvable' }) }
+      case 'chercher_projet': {
+        const found = await searchProjects(String(args.nom ?? ''))
+        return {
+          result: JSON.stringify({
+            resultats: found.map((projet) => ({
+              projet_id: projet.id,
+              libelle: projetLabel(projet),
+              type: projet.kind,
+              ville: projet.city,
+              etape: projet.stage,
+            })),
+            nombre: found.length,
+          }),
+        }
       }
 
-      case 'creer_vendeur': {
-        const operation = await createSeller({
+      case 'lire_projet': {
+        const detail = await readProjectDetail(String(args.projet_id ?? ''))
+        return { result: JSON.stringify(detail ?? { erreur: 'Projet introuvable' }) }
+      }
+
+      case 'creer_projet': {
+        const operation = await createProject({
           ...ctx,
+          type: args.type === 'vente' || args.type === 'achat' ? args.type : 'vente',
           name: String(args.nom ?? '').trim(),
           city: args.ville ?? null,
           phone: args.telephone ?? null,
           email: args.email ?? null,
           propertyType: args.type_bien ?? null,
-          amount: normalizeAmount(args.prix),
+          amount: normalizeAmount(args.prix_ou_budget),
           note: args.note ?? null,
-        })
-        return { result: JSON.stringify({ ok: true, reference: operation.ref, resume: operation.summary }), operation }
-      }
-
-      case 'creer_acquereur': {
-        const operation = await createBuyer({
-          ...ctx,
-          name: String(args.nom ?? '').trim(),
-          city: args.ville ?? null,
-          phone: args.telephone ?? null,
-          email: args.email ?? null,
-          propertyType: args.type_bien ?? null,
-          amount: normalizeAmount(args.budget),
-          note: args.note ?? null,
+          contactId: args.contact_id ?? null,
         })
         return { result: JSON.stringify({ ok: true, reference: operation.ref, resume: operation.summary }), operation }
       }
@@ -208,22 +209,15 @@ export async function executeTool(name: string, rawArgs: string, ctx: ToolContex
       case 'ajouter_note':
       case 'ajouter_tache': {
         const isTask = name === 'ajouter_tache'
-        const dossierId = String(args.dossier_id ?? '')
+        const projetId = String(args.projet_id ?? '')
         const content = String(args.contenu ?? '').trim()
 
-        // Garde-fou anti-doublon. Il vit ici, dans le code : un modèle qui
-        // ignore la consigne du prompt se heurte quand même au refus, et
-        // repart avec l'identifiant de la tâche à modifier.
         if (isTask) {
-          const dossier = await getDossier(dossierId)
-          if (!dossier) return { result: JSON.stringify({ erreur: 'Dossier introuvable' }) }
+          const projet = await getProject(projetId)
+          if (!projet) return { result: JSON.stringify({ erreur: 'Projet introuvable' }) }
 
-          const existing = await findSimilarOpenTask(dossier, content)
+          const existing = await findSimilarOpenTask(projet, content)
           if (existing) {
-            // Demander « cette tâche pour telle date » alors qu'elle existe
-            // déjà, c'est vouloir la dater — pas en créer une seconde. On le
-            // fait directement : un refus obligerait le modèle à enchaîner sur
-            // le bon outil, et c'est précisément ce qu'il rate.
             if (args.echeance) {
               const operation = await updateTask({ ...ctx, taskId: existing.id, dueDate: args.echeance })
               return {
@@ -250,7 +244,7 @@ export async function executeTool(name: string, rawArgs: string, ctx: ToolContex
 
         const operation = await addNoteOrTask({
           ...ctx,
-          dossierId,
+          projetId,
           content,
           dueDate: isTask ? (args.echeance ?? null) : null,
           isTask,
@@ -273,8 +267,6 @@ export async function executeTool(name: string, rawArgs: string, ctx: ToolContex
         return { result: JSON.stringify({ erreur: `Outil inconnu : ${name}` }) }
     }
   } catch (err) {
-    // L'erreur remonte au modèle plutôt qu'à l'utilisateur : il peut corriger
-    // son appel (dossier inexistant, champ manquant) et réessayer.
     return { result: JSON.stringify({ erreur: err instanceof Error ? err.message : String(err) }) }
   }
 }

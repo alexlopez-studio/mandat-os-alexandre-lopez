@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import type { Database, OpportunityEventType } from '@/types/supabase'
+import type { Database, ActivityType } from '@/types/supabase'
 
-type OpportunityEventInsert = Database['public']['Tables']['opportunity_events']['Insert']
+type ActivityInsert = Database['public']['Tables']['activities']['Insert']
 type OpportunityUpdate = Database['public']['Tables']['opportunities']['Update']
 
-const VALID_TYPES: OpportunityEventType[] = [
+const VALID_TYPES: ActivityType[] = [
   'note',
   'task',
   'call',
@@ -52,7 +52,7 @@ export async function POST(
       return NextResponse.json({ error: 'Opportunité introuvable' }, { status: 404 })
     }
 
-    const requestedType = asText(body.type) as OpportunityEventType | null
+    const requestedType = asText(body.type) as ActivityType | null
     const type = requestedType && VALID_TYPES.includes(requestedType) ? requestedType : 'note'
     const title = asText(body.title)
     const content = asText(body.content)
@@ -67,7 +67,7 @@ export async function POST(
       return NextResponse.json({ error: 'Contenu requis' }, { status: 400 })
     }
 
-    const payload: OpportunityEventInsert = {
+    const payload: ActivityInsert = {
       opportunity_id: id,
       type,
       title,
@@ -79,7 +79,7 @@ export async function POST(
     }
 
     const { data: event, error } = await supabaseAdmin
-      .from('opportunity_events')
+      .from('activities')
       .insert(payload)
       .select()
       .single()

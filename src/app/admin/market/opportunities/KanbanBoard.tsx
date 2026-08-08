@@ -72,6 +72,7 @@ interface Opportunity {
   priority: Priority
   type: SignalType
   sellerName: string | null
+  projectContacts: { role: string; contacts: any }[]
   sellerPhone: string | null
   sellerEmail: string | null
   sourceChannel: string | null
@@ -130,6 +131,10 @@ interface OpportunityRow {
   follow_up_at: string | null
   created_at: string
   property: { title: string | null; city: string | null; price: number | null } | null
+  project_contacts?: {
+    role: string
+    contacts: { id: string; first_name: string; last_name: string; email: string | null; phone: string | null } | null
+  }[]
 }
 
 type DueFilter = 'all' | 'overdue' | 'today' | 'week' | 'no_due'
@@ -277,7 +282,10 @@ function mapRow(row: OpportunityRow): Opportunity {
     stage: normalizeStage(row.stage),
     priority: normalizePriority(row.priority),
     type: normalizeType(row.signal_type),
-    sellerName: row.seller_name,
+    projectContacts: row.project_contacts ?? [],
+    sellerName: row.project_contacts && row.project_contacts.length > 0
+      ? row.project_contacts.map(pc => pc.contacts?.first_name).filter(Boolean).join(' & ') || row.seller_name
+      : row.seller_name,
     sellerPhone: row.seller_phone,
     sellerEmail: row.seller_email,
     sourceChannel: row.source_channel,

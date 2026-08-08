@@ -24,21 +24,13 @@ type Priority = 'low' | 'medium' | 'high' | 'critical'
 
 type ContactMode = 'existing' | 'new'
 
-type LeadOption = {
+interface ContactOption {
   id: string
-  tool: string
-  commune: string | null
-  priority: Priority
-  next_action: string | null
-  prospect: {
-    id: string
-    first_name: string | null
-    last_name: string | null
-    email: string | null
-    phone: string | null
-  }
-  seller_property?: { type_bien?: string | null } | null
-  opportunity?: { id: string; title: string; stage: string | null; priority: string | null } | null
+  first_name: string
+  last_name: string
+  email: string | null
+  phone: string | null
+  source: string
 }
 
 type PropertyOption = {
@@ -110,9 +102,9 @@ function NouveauVendeurContent() {
   const normalizedInitialStage = STAGES.some((stage) => stage.id === initialStage) ? initialStage ?? 'Nouveau contact' : 'Nouveau contact'
 
   const [mode, setMode] = useState<ContactMode>('existing')
-  const [leadSearch, setLeadSearch] = useState('')
-  const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
-  const [selectedLeadId, setSelectedLeadId] = useState('')
+  const [contactOptions, setContactOptions] = useState<ContactOption[]>([])
+  const [selectedContactId, setSelectedContactId] = useState('')
+  const [contactSearch, setContactSearch] = useState('')
   const [propertySearch, setPropertySearch] = useState('')
   const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>([])
   const [propertyLoading, setPropertyLoading] = useState(false)
@@ -136,18 +128,14 @@ function NouveauVendeurContent() {
     [propertyOptions, selectedPropertyId],
   )
 
-  const selectedLead = useMemo(
-    () => leadOptions.find((lead) => lead.id === selectedLeadId) ?? null,
-    [leadOptions, selectedLeadId],
-  )
-
-  const loadLeads = useCallback(async (q = '') => {
+  const loadContacts = useCallback(async (q = '') => {
     try {
-      const params = new URLSearchParams({ page_size: '50' })
+      const params = new URLSearchParams()
       if (q.trim()) params.set('q', q.trim())
-      const res = await fetch('/api/leads/list?' + params.toString())
+      const res = await fetch('/api/market/contacts/search?' + params.toString())
       const data = await res.json()
-      if (data.success) setLeadOptions(data.data ?? [])
+      if (!res.ok) throw new Error(data.error ?? 'Erreur de recherche')
+      if (data.contacts) setContactOptions(data.contacts)
     } catch (error) {
       console.error('Erreur chargement contacts', error)
     }
@@ -172,10 +160,10 @@ function NouveauVendeurContent() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      void loadLeads(leadSearch)
+      void loadContacts(contactSearch)
     }, 250)
     return () => clearTimeout(timer)
-  }, [leadSearch, loadLeads])
+  }, [contactSearch, loadContacts])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -185,7 +173,7 @@ function NouveauVendeurContent() {
   }, [propertySearch, loadProperties])
 
   const hasNewContact = Boolean(form.sellerName.trim() || form.sellerPhone.trim() || form.sellerEmail.trim())
-  const canSave = Boolean(selectedPropertyId || selectedLeadId || (mode === 'new' && hasNewContact))
+  const canSave = Boolean(selectedPropertyId || selectedContactId || (mode === 'new' && hasNewContact))
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -199,23 +187,20 @@ function NouveauVendeurContent() {
       const sourceChannel = selectedProperty
         ? (selectedProperty.seller_type === 'agency' ? 'annonce_agence' : 'annonce_particulier')
         : form.sourceChannel
-      const agencyWatch = Boolean(selectedProperty?.seller_type === 'agency' && !selectedLeadId && mode === 'existing')
+      const agencyWatch = Boolean(selectedProperty?.seller_type === 'agency' && !selectedContactId && mode === 'existing')
 
       const res = await fetch('/api/market/opportunities', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           market_property_id: selectedPropertyId || null,
-          lead_id: mode === 'existing' ? selectedLeadId || null : null,
-          create_lead: mode === 'new',
-          lead: mode === 'new' ? {
-            seller_name: form.sellerName,
+          contact_id: mode === 'existing' ? selectedContactId || null : null,
+          create_contact: mode === 'new',
+          contact: mode === 'new' ? {
+            first_name: form.sellerName.split(' ')[0] || 'Inconnu',
+            last_name: form.sellerName.split(' ').slice(1).join(' ') || '',
             phone: form.sellerPhone,
             email: form.sellerEmail,
-            source_channel: sourceChannel,
-            commune: form.propertyCity,
-            type_bien: form.propertyType,
-            priority: form.priority,
           } : undefined,
           title: mode === 'new' ? buildTitle(form) : selectedProperty?.title ?? undefined,
           stage: agencyWatch ? 'Veille annonce' : form.stage,
@@ -241,15 +226,8 @@ function NouveauVendeurContent() {
     }
   }
 
-  function selectLead(lead: LeadOption) {
-    setSelectedLeadId(lead.id)
-    setForm((current) => ({
-      ...current,
-      priority: lead.priority,
-      propertyCity: lead.commune ?? current.propertyCity,
-      propertyType: lead.seller_property?.type_bien ?? current.propertyType,
-      nextAction: lead.next_action ?? current.nextAction,
-    }))
+  function selectContact(contact: ContactOption) {
+    setSelectedContactId(contact.id)
   }
 
   function selectProperty(property: PropertyOption) {
@@ -299,7 +277,7 @@ function NouveauVendeurContent() {
                 type="button"
                 onClick={() => {
                   setMode('new')
-                  setSelectedLeadId('')
+                  setSelectedContactId('')
                 }}
                 className={cn('rounded-md px-3 py-2 text-sm font-medium transition-colors', mode === 'new' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
               >
@@ -311,34 +289,30 @@ function NouveauVendeurContent() {
               <div className="space-y-3">
                 <div className="relative max-w-lg">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)} placeholder="Nom, téléphone, email..." className="pl-9" />
+                  <Input value={contactSearch} onChange={(event) => setContactSearch(event.target.value)} placeholder="Nom, téléphone, email..." className="pl-9" />
                 </div>
                 <div className="grid max-h-72 gap-2 overflow-y-auto rounded-lg border p-2 md:grid-cols-2">
-                  {leadOptions.length === 0 ? (
+                  {contactOptions.length === 0 ? (
                     <p className="col-span-full px-2 py-8 text-center text-sm text-muted-foreground">Aucun contact trouvé</p>
-                  ) : leadOptions.map((lead) => {
-                    const name = [lead.prospect.first_name, lead.prospect.last_name].filter(Boolean).join(' ').trim() || 'Contact'
-                    const selected = selectedLeadId === lead.id
+                  ) : contactOptions.map((contact) => {
+                    const name = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() || 'Contact'
+                    const selected = selectedContactId === contact.id
                     return (
                       <button
-                        key={lead.id}
+                        key={contact.id}
                         type="button"
-                        disabled={Boolean(lead.opportunity)}
-                        onClick={() => selectLead(lead)}
+                        onClick={() => selectContact(contact)}
                         className={cn(
                           'rounded-md border p-3 text-left transition-colors',
-                          selected ? 'border-primary bg-accent/50' : 'border-border hover:bg-muted/50',
-                          lead.opportunity && 'cursor-not-allowed opacity-60 hover:bg-transparent',
+                          selected ? 'border-primary bg-accent/50' : 'border-border hover:bg-muted/50'
                         )}
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm font-medium">{name}</span>
-                          {lead.opportunity && <Badge variant="outline" className="text-[10px]">déjà lié</Badge>}
                         </div>
                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                          {lead.prospect.phone && <span>{lead.prospect.phone}</span>}
-                          {lead.prospect.email && <span>{lead.prospect.email}</span>}
-                          {lead.commune && <span>{lead.commune}</span>}
+                          {contact.phone && <span>{contact.phone}</span>}
+                          {contact.email && <span>{contact.email}</span>}
                         </div>
                       </button>
                     )

@@ -7,24 +7,24 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/telegram/crm', () => ({
-  getDossier: vi.fn(async () => ({
-    id: 'opp-1', kind: 'vendeur', name: 'Monsieur Miche', city: 'Brignoles',
-    stage: 'Pré-estimation', leadId: null,
+  getProject: vi.fn(async () => ({
+    id: 'opp-1', kind: 'vente', title: 'Projet de vente', city: 'Brignoles',
+    stage: 'Pré-estimation'
   })),
   findSimilarOpenTask: vi.fn(async () => mocks.similarTask),
   addNoteOrTask: vi.fn(async (input: unknown) => {
     mocks.added.push(input)
-    return { ref: 10, summary: 'Tâche — Monsieur Miche' }
+    return { ref: 10, summary: 'Tâche — Projet de vente' }
   }),
   updateTask: vi.fn(async (input: unknown) => {
     mocks.updated.push(input)
-    return { ref: 11, summary: 'Tâche mise à jour — Monsieur Miche : échéance lundi 10 août 2026' }
+    return { ref: 11, summary: 'Tâche mise à jour — Projet de vente : échéance lundi 10 août 2026' }
   }),
-  createSeller: vi.fn(),
-  createBuyer: vi.fn(),
-  readDossierDetail: vi.fn(),
-  searchDossiers: vi.fn(),
-  dossierLabel: (d: { name: string }) => d.name,
+  createProject: vi.fn(),
+  readProjectDetail: vi.fn(),
+  searchContacts: vi.fn(),
+  searchProjects: vi.fn(),
+  projetLabel: (p: { title: string }) => p.title,
 }))
 
 import { executeTool, TOOL_DEFINITIONS } from '@/lib/telegram/tools'
@@ -50,7 +50,7 @@ describe('outils Telegram', () => {
     mocks.similarTask = { id: 'task-1', content: 'envoyer le rapport d’estimation', dueDate: '2026-08-10' }
 
     const { result } = await callTool('ajouter_tache', {
-      dossier_id: 'opp-1',
+      projet_id: 'opp-1',
       contenu: 'envoi du rapport d’estimation',
       echeance: '2026-08-11',
     })
@@ -68,7 +68,7 @@ describe('outils Telegram', () => {
     mocks.similarTask = { id: 'task-1', content: 'envoyer le rapport d’estimation', dueDate: null }
 
     const { result } = await callTool('ajouter_tache', {
-      dossier_id: 'opp-1',
+      projet_id: 'opp-1',
       contenu: 'envoi du rapport d’estimation',
     })
     const parsed = JSON.parse(result)
@@ -81,7 +81,7 @@ describe('outils Telegram', () => {
 
   it('crée la tâche quand aucune équivalente n’existe', async () => {
     const { result } = await callTool('ajouter_tache', {
-      dossier_id: 'opp-1',
+      projet_id: 'opp-1',
       contenu: 'appeler le notaire',
       echeance: '2026-08-10',
     })

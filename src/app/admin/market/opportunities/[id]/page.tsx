@@ -17,6 +17,7 @@ import {
   FileText,
   FolderOpen,
   Home,
+  LayoutDashboard,
   Link2,
   Loader2,
   Mail,
@@ -24,6 +25,7 @@ import {
   MoreHorizontal,
   Phone,
   Plus,
+  History,
   Rocket,
   Search,
   Sparkles,
@@ -63,14 +65,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { DossierWorkspace } from '../../clients/DossierWorkspace'
 import { isPortalEligibleStage } from '@/lib/market/seller-stages'
-import type { OpportunityEventType } from '@/types/supabase'
+import type { ActivityType } from '@/types/supabase'
 
 type Priority = 'low' | 'medium' | 'high' | 'critical'
 
 interface OpportunityEvent {
   id: string
   opportunity_id: string
-  type: OpportunityEventType
+  type: ActivityType
   title: string | null
   content: string | null
   due_at: string | null
@@ -97,8 +99,10 @@ interface Opportunity {
   seller_phone: string | null
   seller_email: string | null
   source_channel: string | null
+  property_address: string | null
   property_city: string | null
   property_type: string | null
+  project_contacts?: any[]
   estimated_price_min: number | null
   estimated_price_max: number | null
   selling_timeline: string | null
@@ -213,7 +217,7 @@ interface LeadSearchRow {
 }
 
 interface EventDraft {
-  type: OpportunityEventType
+  type: ActivityType
   title: string
   content: string
   due_at: string
@@ -331,7 +335,7 @@ const CLIENT_DOSSIER_STATUS_LABELS: Record<string, string> = {
   archived: 'Archivé',
 }
 
-const EVENT_CONFIG: Record<OpportunityEventType, { label: string; icon: typeof StickyNote; className: string }> = {
+const EVENT_CONFIG: Record<ActivityType, { label: string; icon: typeof StickyNote; className: string }> = {
   note: { label: 'Note', icon: StickyNote, className: 'bg-slate-50 text-slate-700 border-slate-200' },
   task: { label: 'Tâche', icon: CheckCircle2, className: 'bg-blue-50 text-blue-700 border-blue-200' },
   call: { label: 'Appel', icon: Phone, className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
@@ -445,7 +449,7 @@ const EMPTY_PROFESSIONAL_DRAFT: ProfessionalDraft = {
   track_record_json: '[]',
 }
 
-function emptyEventDraft(type: OpportunityEventType): EventDraft {
+function emptyEventDraft(type: ActivityType): EventDraft {
   const now = new Date()
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
   return {
@@ -1084,7 +1088,7 @@ export default function OpportunityDetailPage() {
   )
   const recentEvents = events.slice(0, 6)
 
-  function openEvent(type: OpportunityEventType) {
+  function openEvent(type: ActivityType) {
     setEditingEventId(null)
     setEventDraft(emptyEventDraft(type))
     setEventDialogOpen(true)
@@ -1405,11 +1409,11 @@ export default function OpportunityDetailPage() {
       </div>
 
       <Tabs defaultValue="overview" className="space-y-5">
-        <TabsList className="w-full justify-start">
-          <TabsTrigger value="overview" className="flex-1">Vue d’ensemble</TabsTrigger>
-          <TabsTrigger value="estimation" className="flex-1">Estimation</TabsTrigger>
-          <TabsTrigger value="dossier" className="flex-1">Suivi client</TabsTrigger>
-          <TabsTrigger value="history" className="flex-1">Historique</TabsTrigger>
+        <TabsList variant="pill" className="w-full justify-start">
+          <TabsTrigger value="overview" className="flex-1"><LayoutDashboard /> Vue d’ensemble</TabsTrigger>
+          <TabsTrigger value="estimation" className="flex-1"><Building2 /> Estimation</TabsTrigger>
+          <TabsTrigger value="dossier" className="flex-1"><FolderOpen /> Suivi client</TabsTrigger>
+          <TabsTrigger value="history" className="flex-1"><History /> Historique</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -1587,33 +1591,42 @@ export default function OpportunityDetailPage() {
               </InfoCard>
 
               <InfoCard
-                title="Contacts"
+                title="Contacts Vendeurs"
                 icon={<UserRound className="size-4" />}
-                action={opportunity.lead ? (
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/app/leads/${opportunity.lead.id}`}><ExternalLink className="mr-1 size-3.5" /> Ouvrir</Link>
-                    </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/app/leads/${opportunity.lead.id}`}><Edit className="mr-1 size-3.5" /> Modifier</Link>
-                    </Button>
-                  </div>
-                ) : (
+                action={
                   <Button variant="outline" size="sm" onClick={() => setLeadDialogOpen(true)}><Plus className="mr-1 size-3.5" /> Ajouter</Button>
-                )}
+                }
               >
-                {opportunity.lead ? (
+                {opportunity.project_contacts && opportunity.project_contacts.length > 0 ? (
+                  <ul className="space-y-4">
+                    {opportunity.project_contacts.map((pc: any, idx: number) => {
+                      const contact = pc.contacts
+                      if (!contact) return null
+                      const cName = [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() || 'Contact'
+                      const initials = [contact.first_name?.[0], contact.last_name?.[0]].filter(Boolean).join('').toUpperCase() || 'C'
+                      return (
+                        <li key={contact.id || idx} className="flex items-start gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[13px] font-bold text-slate-500">
+                            {initials}
+                          </div>
+                          <div>
+                            <div className="text-[15px] font-bold">{cName}</div>
+                            <div className="text-[13px] text-slate-500">{pc.role}</div>
+                            {contact.phone && <div className="mt-1 text-[13px] text-primary">{contact.phone}</div>}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : opportunity.lead ? (
                   <div className="space-y-3">
                     <div>
                       <p className="font-medium">{leadName(opportunity.lead)}</p>
                       <div className="mt-1 space-y-1 text-sm text-muted-foreground">
                         {opportunity.lead.prospect?.phone && <p className="flex items-center gap-1.5"><Phone className="size-3.5" /> {opportunity.lead.prospect.phone}</p>}
                         {opportunity.lead.prospect?.email && <p className="flex items-center gap-1.5"><Mail className="size-3.5" /> {opportunity.lead.prospect.email}</p>}
-                        {opportunity.lead.commune && <p className="flex items-center gap-1.5"><MapPin className="size-3.5" /> {opportunity.lead.commune}</p>}
                       </div>
                     </div>
-                    <Metric label="Source" value={opportunity.lead.source_channel ?? '—'} />
-                    {opportunity.lead.next_action && <p className="text-sm text-muted-foreground">{opportunity.lead.next_action}</p>}
                   </div>
                 ) : (
                   <EmptyCardText>Aucun contact associé à cette opportunité.</EmptyCardText>

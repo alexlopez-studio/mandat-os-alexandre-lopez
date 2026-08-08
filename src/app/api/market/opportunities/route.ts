@@ -194,7 +194,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('opportunities')
-      .select('*', { count: 'exact' })
+      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))', { count: 'exact' })
       .eq('is_test', false)
 
     // Filtres
@@ -275,6 +275,10 @@ export async function POST(req: NextRequest) {
       : null
     let leadId = typeof body.lead_id === 'string' && body.lead_id
       ? body.lead_id
+      : null
+
+    const contactIdPayload = typeof body.contact_id === 'string' && body.contact_id
+      ? body.contact_id
       : null
 
     if (!leadId && body.create_lead === true) {
@@ -384,12 +388,57 @@ export async function POST(req: NextRequest) {
         } : {}),
         ...buildSellerPayload(body),
       })
-      .select()
+      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))')
       .single()
 
     if (error) {
       console.error('[API /market/opportunities] POST error:', error)
       return NextResponse.json({ error: 'Erreur création opportunité' }, { status: 500 })
+    }
+
+    // Lot 2: Link contact to opportunity
+    let finalContactId = contactIdPayload
+    
+    // Si on a un leadId (ancien mode) on peut essayer de retrouver son contact associé, 
+    // ou si on a explicitement demandé de créer un contact (new mode)
+    if (!finalContactId && body.create_contact) {
+      const c = body.contact as any
+      const { data: newContact, error: contactError } = await supabaseAdmin
+        .from('contacts')
+        .insert({
+          first_name: c?.first_name || 'Inconnu',
+          last_name: c?.last_name || '',
+          email: c?.email || null,
+          phone: c?.phone || null,
+          source: 'opportunity'
+        })
+        .select()
+        .single()
+      
+      if (!contactError && newContact) {
+        finalContactId = newContact.id
+      }
+    }
+
+    if (finalContactId) {
+      const { error: pcError } = await supabaseAdmin
+        .from('project_contacts')
+        .insert({
+          contact_id: finalContactId,
+          opportunity_id: opportunity.id,
+          role: 'Vendeur unique'
+        })
+        
+      if (!pcError) {
+        const { data: pcData } = await supabaseAdmin
+          .from('project_contacts')
+          .select('role, contacts(id, first_name, last_name, email, phone)')
+          .eq('opportunity_id', opportunity.id)
+          
+        if (pcData) {
+          opportunity.project_contacts = pcData
+        }
+      }
     }
 
     return NextResponse.json({ opportunity }, { status: 201 })
