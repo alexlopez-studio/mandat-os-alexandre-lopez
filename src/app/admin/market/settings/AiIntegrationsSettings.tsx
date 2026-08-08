@@ -770,6 +770,50 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
                 </Button>
               </div>
             </div>
+
+            {/* Playiad Card */}
+            <div className="rounded-2xl border bg-card p-6 shadow-xs flex flex-col justify-between space-y-6 hover:border-primary/40 hover:shadow-sm transition-all">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="size-11 rounded-2xl bg-sky-500/10 text-sky-600 dark:bg-sky-500/20 flex items-center justify-center font-bold shadow-xs">
+                    <Sparkles className="size-5" />
+                  </div>
+                  <Badge variant="outline" className="font-bold rounded-full text-xs px-2.5 py-0.5 border-sky-200 bg-sky-50 text-sky-700">
+                    Connecteur Prêt
+                  </Badge>
+                </div>
+
+                <div>
+                  <h4 className="font-bold text-base text-foreground">Playiad (iad France)</h4>
+                  <p className="text-xs text-muted-foreground font-medium mt-1 leading-relaxed">
+                    Importation automatique des leads acquéreurs depuis votre intranet Playiad sans saisie manuelle.
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-muted/40 p-3 space-y-2 text-xs">
+                  <p className="font-semibold text-foreground">2 options au choix :</p>
+                  <ul className="space-y-1 text-muted-foreground list-disc list-inside">
+                    <li><strong>Extension Chrome</strong> : Dans le dossier <code className="text-primary font-mono">extensions/playiad-sync</code></li>
+                    <li><strong>Marque-page 1-clic</strong> : À glisser dans vos favoris</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const code = `javascript:(async function(){const leads=[];document.querySelectorAll('tr,.lead-item,.card-prospect,.list-group-item').forEach((row,i)=>{const t=row.innerText||'';const e=t.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/);const p=t.match(/(?:(?:\\+|00)33|0)\\s*[1-9](?:[\\s.-]*\\d{2}){4}/);if(e||p){const lines=t.split('\\n').map(l=>l.trim()).filter(Boolean);const n=lines.find(l=>!l.includes('@')&&!l.match(/\\d{9,}/)&&l.length<40)||'';const parts=n.split(/\\s+/);leads.push({playiad_id:'p-'+i,first_name:parts[0]||'Acquéreur',last_name:parts.slice(1).join(' ')||'Playiad',email:e?e[0]:null,phone:p?p[0].replace(/[\\s.-]/g,''):null,source:'Playiad (iad France)'});}});if(!leads.length){alert('Aucun acquéreur trouvé sur la page actuelle.');return;}const res=await fetch('https://preview.alexlopez-provence.fr/api/integrations/playiad/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leads})});const json=await res.json();alert(json.success?'✅ '+json.createdCount+' acquéreur(s) créé(s) dans Mandat OS !':'❌ Erreur: '+json.error);})();`
+                    navigator.clipboard.writeText(code)
+                    toast.success("Code du marque-page 1-clic copié dans le presse-papier !")
+                  }}
+                  className="w-full h-9 rounded-full font-bold text-xs px-3"
+                >
+                  <Sparkles className="size-3.5 mr-1.5 shrink-0 text-primary" />
+                  <span className="truncate">Copier le Marque-Page 1-Clic</span>
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
