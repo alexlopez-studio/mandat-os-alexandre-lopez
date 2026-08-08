@@ -1,11 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Mandat OS — Sync Playiad Acquéreurs",
-  "version": "1.0.2",
-  "description": "Synchronise les leads acquéreurs depuis Playiad (https://www.playiad.com/buyers/leads) directement dans votre CRM Mandat OS.",
+  "version": "1.1.0",
+  "description": "Synchronise automatiquement les leads acquéreurs depuis Playiad (https://www.playiad.com/buyers/leads) directement dans votre CRM Mandat OS.",
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "alarms",
+    "notifications",
+    "scripting"
   ],
   "host_permissions": [
     "https://*.playiad.com/*",
@@ -16,6 +19,9 @@
     "https://*.alexandrelopez.fr/*",
     "http://localhost/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Synchroniser Playiad avec Mandat OS"

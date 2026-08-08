@@ -22,7 +22,7 @@
     p {
       font-size: 12px;
       color: #64748b;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
       line-height: 1.4;
     }
     label {
@@ -34,14 +34,31 @@
       display: block;
       margin-bottom: 4px;
     }
-    input {
+    input[type="text"] {
       width: 100%;
       box-sizing: border-box;
       padding: 8px 12px;
       border: 1px solid #cbd5e1;
       border-radius: 8px;
       font-size: 13px;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
+    }
+    .toggle-group {
+      display: flex;
+      items-center;
+      gap: 8px;
+      margin-bottom: 16px;
+      background: #ffffff;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+    }
+    .toggle-group label {
+      text-transform: none;
+      font-size: 12px;
+      margin: 0;
+      font-weight: 600;
+      cursor: pointer;
     }
     button {
       width: 100%;
@@ -72,6 +89,11 @@
 
   <label for="mandatUrl">URL du serveur Mandat OS</label>
   <input type="text" id="mandatUrl" value="https://app.alexandrelopez.fr">
+
+  <div class="toggle-group">
+    <input type="checkbox" id="autoSync" checked>
+    <label for="autoSync">Auto-sync silencieuse (toutes les 15 min)</label>
+  </div>
 
   <button id="saveBtn">Enregistrer la configuration</button>
   <div id="status" class="status"></div>

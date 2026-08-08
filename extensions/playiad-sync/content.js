@@ -135,6 +135,15 @@
     document.body.appendChild(btn)
   }
 
+  // Écouter les demandes d'extraction automatiques depuis le background service worker
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'extract_leads') {
+      const leads = extractLeadsFromDOM()
+      sendResponse({ leads })
+    }
+    return true
+  })
+
   // Tenter l'injection au chargement et après le chargement des données AJAX
   setTimeout(injectSyncButton, 1000)
   setTimeout(injectSyncButton, 3000)
