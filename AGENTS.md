@@ -9,6 +9,7 @@ Avant de modifier l'interface, lire :
 
 - `docs/DESIGN_UX_GUIDELINES.md`
 - `docs/BRAND.md`
+- **Design System** : Se référer systématiquement à `src/app/admin/market/design-system/page.tsx` comme source de vérité (Single Source of Truth) pour garantir la cohérence et l'harmonie de l'interface (composants, boutons, couleurs, tailles). Ne jamais inventer de nouveaux composants d'interface sans vérifier s'ils existent déjà dans ce guide.
 
 Branche de travail :
 

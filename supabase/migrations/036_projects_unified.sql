@@ -108,7 +108,7 @@ INSERT INTO public.projects (
   created_at, updated_at
 )
 SELECT 
-  id, 'achat'::public.project_kind, lead_id, prospect_id, 
+  id, 'achat'::public.project_kind, lead_id::uuid, prospect_id::uuid, 
   'Recherche acquéreur', -- fallback title since buyer_criteria has no title
   stage, type_bien, communes, budget_max,
   surface_min, pieces_min, criteres, active, next_action, due_date, matched_at,
