@@ -64,7 +64,7 @@ describe('GET /api/market/dashboard', () => {
         ],
       ],
       [
-        'opportunity_events',
+        'activities',
         [
           {
             id: 'event-1',

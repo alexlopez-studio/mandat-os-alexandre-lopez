@@ -1,22 +1,12 @@
 import { adminDb } from '@/lib/ai/db'
 import { formatFrenchDate, parseFrenchDate } from '@/lib/telegram/dates'
 
-/**
- * Accès CRM pour l'agent Telegram : recherche, lecture, écriture.
- *
- * Toute écriture dépose son inverse dans `telegram_operations` : c'est ce qui
- * rend `/annuler` possible. Les lectures, elles, sont ce qui donne des yeux à
- * l'agent — il interroge cette base au lieu de recevoir une liste figée.
- */
-
-export type Dossier = {
+export type Projet = {
   id: string
-  kind: 'vendeur' | 'acquereur'
-  name: string
+  kind: 'vente' | 'achat'
+  title: string
   city: string | null
   stage: string
-  /** Renseigné pour les acquéreurs : cible des notes dans `lead_events`. */
-  leadId: string | null
 }
 
 type UndoStep =
@@ -27,138 +17,121 @@ export type AppliedOperation = { ref: number; summary: string }
 
 // ── Recherche et lecture ──────────────────────────────────────
 
-/** Normalise un nom : sans accents, sans civilité, comparable. */
 export function normalizeName(value: string) {
   return value
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/\b(m|mr|mme|monsieur|madame|les|la|le|famille)\b/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
 }
 
-async function allDossiers(): Promise<Dossier[]> {
-  const [sellers, buyers] = await Promise.all([
-    adminDb()
-      .from('opportunities')
-      .select('id, title, seller_name, property_city, stage')
-      .order('updated_at', { ascending: false })
-      .limit(200),
-    adminDb()
-      .from('buyer_criteria')
-      .select('id, lead_id, prospect_id, communes, stage')
-      .eq('active', true)
-      .order('updated_at', { ascending: false })
-      .limit(200),
-  ])
+export async function searchContacts(query: string) {
+  const needle = normalizeName(query)
+  if (needle.length < 2) return []
 
-  if (sellers.error) throw new Error(sellers.error.message)
-  if (buyers.error) throw new Error(buyers.error.message)
+  const { data, error } = await adminDb()
+    .from('contacts')
+    .select('id, first_name, last_name, email, phone')
+    .order('updated_at', { ascending: false })
+    .limit(50)
 
-  const result: Dossier[] = (sellers.data ?? []).map((row: Record<string, string | null>) => ({
-    id: row.id as string,
-    kind: 'vendeur' as const,
-    name: row.seller_name || row.title || 'Sans nom',
-    city: row.property_city ?? null,
-    stage: row.stage || 'Nouveau contact',
-    leadId: null,
-  }))
+  if (error) throw new Error(error.message)
 
-  const buyerRows = (buyers.data ?? []) as Array<Record<string, unknown>>
-  if (buyerRows.length > 0) {
-    // `buyer_criteria.prospect_id` n'a pas de clé étrangère vers `prospects`
-    // (colonne TEXT héritée de la migration 004) : jointure faite ici.
-    const ids = buyerRows.map((row) => row.prospect_id).filter(Boolean) as string[]
-    const names = new Map<string, string>()
-
-    if (ids.length > 0) {
-      const { data: prospects } = await adminDb()
-        .from('prospects')
-        .select('id, first_name, last_name')
-        .in('id', ids)
-
-      for (const p of (prospects ?? []) as Array<Record<string, string | null>>) {
-        const full = [p.first_name, p.last_name].filter(Boolean).join(' ').trim()
-        if (p.id) names.set(p.id, full || 'Sans nom')
-      }
-    }
-
-    for (const row of buyerRows) {
-      result.push({
-        id: row.id as string,
-        kind: 'acquereur',
-        name: names.get(row.prospect_id as string) ?? 'Sans nom',
-        city: Array.isArray(row.communes) && row.communes.length ? String(row.communes[0]) : null,
-        stage: (row.stage as string) || 'Nouveau contact',
-        leadId: (row.lead_id as string) ?? null,
-      })
-    }
-  }
-
-  return result
+  return (data || []).filter((c: any) => {
+    const hay = normalizeName(`${c.first_name} ${c.last_name}`)
+    return hay.includes(needle) || needle.includes(hay)
+  }).slice(0, 10)
 }
 
-/** Cherche un dossier par nom, insensible aux accents et aux civilités. */
-export async function searchDossiers(query: string): Promise<Dossier[]> {
+export async function searchProjects(query: string): Promise<Projet[]> {
   const needle = normalizeName(query)
-  const dossiers = await allDossiers()
-  if (needle.length < 2) return dossiers.slice(0, 10)
+  if (needle.length < 2) return []
 
-  return dossiers
-    .filter((dossier) => {
-      const hay = normalizeName(dossier.name)
-      const city = normalizeName(dossier.city ?? '')
-      return hay.includes(needle) || needle.includes(hay) || city.includes(needle)
+  // We query projects and join contacts through project_contacts
+  const { data, error } = await adminDb()
+    .from('projects')
+    .select(`
+      id, kind, title, property_city, communes, stage,
+      project_contacts ( contact_id, role, contacts ( first_name, last_name ) )
+    `)
+    .order('updated_at', { ascending: false })
+    .limit(200)
+
+  if (error) throw new Error(error.message)
+
+  return (data || [])
+    .map((p: any) => {
+      // Find main contact names to match against
+      const contactNames = (p.project_contacts || []).map((pc: any) => 
+        normalizeName(`${pc.contacts?.first_name || ''} ${pc.contacts?.last_name || ''}`)
+      ).join(' ')
+      const title = p.title || 'Projet sans titre'
+      const city = p.kind === 'vente' ? p.property_city : (p.communes?.[0] || null)
+      const hay = normalizeName(`${title} ${contactNames} ${city || ''}`)
+
+      return {
+        id: p.id,
+        kind: p.kind,
+        title,
+        city,
+        stage: p.stage,
+        _hay: hay
+      }
     })
+    .filter((p: any) => p._hay.includes(needle) || needle.includes(p._hay))
+    .map(({ _hay, ...p }: any) => p)
     .slice(0, 10)
 }
 
-export async function getDossier(id: string): Promise<Dossier | null> {
-  const dossiers = await allDossiers()
-  return dossiers.find((dossier) => dossier.id === id) ?? null
-}
-
-/** Détail complet d'un dossier, pour que l'agent sache ce qui est déjà connu. */
-export async function readDossierDetail(id: string): Promise<Record<string, unknown> | null> {
-  const dossier = await getDossier(id)
-  if (!dossier) return null
-
-  if (dossier.kind === 'vendeur') {
-    const { data } = await adminDb()
-      .from('opportunities')
-      .select('seller_name, seller_phone, seller_email, property_city, property_type, property_surface, estimated_price_min, estimated_price_max, stage, note')
-      .eq('id', id)
-      .maybeSingle()
-
-    const { data: events } = await adminDb()
-      .from('opportunity_events')
-      // L'identifiant est indispensable : sans lui, l'agent ne peut désigner
-      // une tâche existante et n'a d'autre choix que d'en créer une seconde.
-      .select('id, type, content, due_at, completed_at, occurred_at')
-      .eq('opportunity_id', id)
-      .order('occurred_at', { ascending: false })
-      .limit(8)
-
-    return { ...dossier, fiche: data ?? {}, historique: events ?? [] }
-  }
-
-  const { data } = await adminDb()
-    .from('buyer_criteria')
-    .select('type_bien, communes, budget_max, surface_min, pieces_min, stage, next_action, due_date')
+export async function getProject(id: string): Promise<Projet | null> {
+  const { data, error } = await adminDb()
+    .from('projects')
+    .select('id, kind, title, property_city, communes, stage')
     .eq('id', id)
     .maybeSingle()
 
-  const { data: events } = dossier.leadId
-    ? await adminDb()
-        .from('lead_events')
-        .select('id, kind, payload, created_at')
-        .eq('lead_id', dossier.leadId)
-        .order('created_at', { ascending: false })
-        .limit(8)
-    : { data: [] }
+  if (error || !data) return null
 
-  return { ...dossier, fiche: data ?? {}, historique: events ?? [] }
+  return {
+    id: data.id,
+    kind: data.kind,
+    title: data.title || 'Projet sans titre',
+    city: data.kind === 'vente' ? data.property_city : (data.communes?.[0] || null),
+    stage: data.stage
+  }
+}
+
+export async function readProjectDetail(id: string): Promise<Record<string, unknown> | null> {
+  const projet = await getProject(id)
+  if (!projet) return null
+
+  let fiche: any = {}
+  if (projet.kind === 'vente') {
+    const { data } = await adminDb()
+      .from('projects')
+      .select('seller_name, seller_phone, seller_email, property_city, property_type, property_surface, estimated_price_min, estimated_price_max, stage, note')
+      .eq('id', id)
+      .maybeSingle()
+    fiche = data ?? {}
+  } else {
+    const { data } = await adminDb()
+      .from('projects')
+      .select('type_bien, communes, budget_max, surface_min, pieces_min, stage, next_action, due_date')
+      .eq('id', id)
+      .maybeSingle()
+    fiche = data ?? {}
+  }
+
+  const { data: events } = await adminDb()
+    .from('activities')
+    .select('id, type, content, due_at, completed_at, occurred_at')
+    .eq('project_id', id)
+    .order('occurred_at', { ascending: false })
+    .limit(8)
+
+  return { ...projet, fiche, historique: events ?? [] }
 }
 
 // ── Journal ───────────────────────────────────────────────────
@@ -190,26 +163,20 @@ async function record(input: {
   return { ref: data.ref as number, summary: data.summary as string }
 }
 
-export function dossierLabel(dossier: Dossier) {
-  return [dossier.name, dossier.city].filter(Boolean).join(' — ') + ` (${dossier.kind})`
+export function projetLabel(projet: Projet) {
+  return [projet.title, projet.city].filter(Boolean).join(' — ') + ` (${projet.kind})`
 }
 
 // ── Rapprochement de libellés ─────────────────────────────────
 
 const STOP_WORDS = new Set(['le', 'la', 'les', 'de', 'des', 'du', 'un', 'une', 'au', 'aux', 'et', 'pour', 'avec', 'son', 'sa'])
 
-/**
- * Racine approximative : on tronque à 5 caractères pour rapprocher les formes
- * fléchies du français (« envoyer » / « envoi », « relancer » / « relance »).
- * En cas de doute la troncature regroupe trop, ce qui bloque une création au
- * profit d'une mise à jour — le sens dans lequel une erreur est rattrapable.
- */
 function stems(value: string) {
   return Array.from(
     new Set(
       value
         .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
+        .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, ' ')
         .split(' ')
@@ -219,7 +186,6 @@ function stems(value: string) {
   )
 }
 
-/** Deux intitulés désignent-ils la même chose à faire ? */
 export function isSimilarContent(a: string, b: string) {
   const left = stems(a)
   const right = stems(b)
@@ -231,58 +197,22 @@ export function isSimilarContent(a: string, b: string) {
 
 export type OpenTask = { id: string; content: string; dueDate: string | null }
 
-/**
- * Tâche ouverte au libellé équivalent sur le même dossier.
- *
- * C'est le garde-fou anti-doublon : il vit ici, dans le code, et non dans le
- * prompt. Un modèle qui ignore la consigne se heurte quand même à un refus.
- */
-export async function findSimilarOpenTask(dossier: Dossier, content: string): Promise<OpenTask | null> {
-  if (dossier.kind === 'vendeur') {
-    const { data } = await adminDb()
-      .from('opportunity_events')
-      .select('id, content, due_at')
-      .eq('opportunity_id', dossier.id)
-      .eq('type', 'task')
-      .is('completed_at', null)
-      .order('created_at', { ascending: false })
-      .limit(50)
-
-    const match = (data ?? []).find((row: Record<string, string | null>) =>
-      isSimilarContent(content, row.content ?? ''))
-
-    return match ? { id: match.id as string, content: match.content ?? '', dueDate: match.due_at ?? null } : null
-  }
-
-  if (!dossier.leadId) return null
-
+export async function findSimilarOpenTask(projet: Projet, content: string): Promise<OpenTask | null> {
   const { data } = await adminDb()
-    .from('lead_events')
-    .select('id, payload')
-    .eq('lead_id', dossier.leadId)
+    .from('activities')
+    .select('id, title, content, due_at')
+    .eq('type', 'task')
+    .is('completed_at', null)
+    .eq('project_id', projet.id)
     .order('created_at', { ascending: false })
     .limit(50)
 
-  const match = (data ?? []).find((row: Record<string, any>) => {
-    const payload = row.payload ?? {}
-    return payload.type === 'task' && !payload.done && isSimilarContent(content, String(payload.content ?? ''))
-  })
+  const match = (data ?? []).find((row: Record<string, string | null>) =>
+    isSimilarContent(content, row.title || row.content || ''))
 
-  if (!match) return null
-  return {
-    id: match.id as string,
-    content: String(match.payload?.content ?? ''),
-    dueDate: (match.payload?.due_date as string) ?? null,
-  }
+  return match ? { id: match.id as string, content: match.title || match.content || '', dueDate: match.due_at ?? null } : null
 }
 
-/**
- * Convertit l'échéance dictée en date ISO, ou échoue franchement.
- *
- * Avant, la valeur brute était concaténée à `T09:00:00Z` puis envoyée à
- * Postgres : « lundi prochain » produisait `lundi prochainT09:00:00Z`, une
- * erreur SQL au milieu de l'insertion. Rien ne descend plus sans passer ici.
- */
 function resolveDueDate(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null
 
@@ -296,85 +226,54 @@ function resolveDueDate(value: unknown): string | null {
 export async function addNoteOrTask(input: {
   chatId: number
   sourceText: string
-  dossierId: string
+  projetId: string
   content: string
   dueDate?: string | null
   isTask: boolean
 }): Promise<AppliedOperation> {
-  const dossier = await getDossier(input.dossierId)
-  if (!dossier) throw new Error('Dossier introuvable')
+  const projet = await getProject(input.projetId)
+  if (!projet) throw new Error('Projet introuvable')
 
   const dueDate = input.isTask ? resolveDueDate(input.dueDate) : null
   const suffix = dueDate ? ` — échéance ${formatFrenchDate(dueDate)}` : ''
-  const summary = `${input.isTask ? 'Tâche' : 'Note'} — ${dossierLabel(dossier)}${suffix}`
+  const summary = `${input.isTask ? 'Tâche' : 'Note'} — ${projetLabel(projet)}${suffix}`
 
-  if (dossier.kind === 'vendeur') {
-    const { data, error } = await adminDb()
-      .from('opportunity_events')
-      .insert({
-        opportunity_id: dossier.id,
-        type: input.isTask ? 'task' : 'note',
-        // Le canal de saisie n'intéresse personne dans la fiche : il reste
-        // tracé dans `metadata.source` et `created_by`, pas dans le titre.
-        title: input.isTask ? 'Tâche' : 'Note',
-        content: input.content,
-        due_at: dueDate ? `${dueDate}T09:00:00Z` : null,
-        metadata: { source: 'telegram' },
-        created_by: 'telegram',
-      })
-      .select('id')
-      .single()
-
-    if (error) throw new Error(error.message)
-    return record({
-      chatId: input.chatId,
-      intent: input.isTask ? 'task' : 'note',
-      summary,
-      sourceText: input.sourceText,
-      targetTable: 'opportunity_events',
-      targetId: data.id as string,
-      steps: [{ type: 'delete', table: 'opportunity_events', id: data.id as string }],
-    })
+  const payload: any = {
+    type: input.isTask ? 'task' : 'note',
+    title: input.isTask ? 'Tâche' : 'Note',
+    content: input.content,
+    due_at: dueDate ? `${dueDate}T09:00:00Z` : null,
+    metadata: { source: 'telegram' },
+    created_by: 'telegram',
+    project_id: projet.id,
   }
 
-  if (!dossier.leadId) throw new Error('Acquéreur sans lead rattaché')
-
   const { data, error } = await adminDb()
-    .from('lead_events')
-    .insert({
-      lead_id: dossier.leadId,
-      kind: 'note',
-      payload: {
-        source: 'telegram',
-        type: input.isTask ? 'task' : 'note',
-        content: input.content,
-        due_date: dueDate,
-      },
-      created_by: 'telegram',
-    })
+    .from('activities')
+    .insert(payload)
     .select('id')
     .single()
 
   if (error) throw new Error(error.message)
-  const steps: UndoStep[] = [{ type: 'delete', table: 'lead_events', id: data.id as string }]
+  const steps: UndoStep[] = [{ type: 'delete', table: 'activities', id: data.id as string }]
 
-  if (input.isTask) {
+  if (input.isTask && projet.kind === 'achat') {
     const { data: before } = await adminDb()
-      .from('buyer_criteria')
+      .from('projects')
       .select('next_action, due_date')
-      .eq('id', dossier.id)
+      .eq('id', projet.id)
       .maybeSingle()
 
     const { error: updateError } = await adminDb()
-      .from('buyer_criteria')
+      .from('projects')
       .update({ next_action: input.content, due_date: dueDate })
-      .eq('id', dossier.id)
+      .eq('id', projet.id)
 
     if (!updateError) {
       steps.push({
         type: 'restore',
-        table: 'buyer_criteria',
-        id: dossier.id,
+        table: 'projects',
+        id: projet.id,
         values: { next_action: before?.next_action ?? null, due_date: before?.due_date ?? null },
       })
     }
@@ -385,15 +284,16 @@ export async function addNoteOrTask(input: {
     intent: input.isTask ? 'task' : 'note',
     summary,
     sourceText: input.sourceText,
-    targetTable: 'lead_events',
+    targetTable: 'activities',
     targetId: data.id as string,
     steps,
   })
 }
 
-export type ContactInput = {
+export type ProjectInput = {
   chatId: number
   sourceText: string
+  type: 'vente' | 'achat'
   name: string
   city?: string | null
   phone?: string | null
@@ -401,96 +301,83 @@ export type ContactInput = {
   propertyType?: string | null
   amount?: number | null
   note?: string | null
+  contactId?: string | null
 }
 
-export async function createSeller(input: ContactInput): Promise<AppliedOperation> {
-  const { data, error } = await adminDb()
-    .from('opportunities')
+export async function createProject(input: ProjectInput): Promise<AppliedOperation> {
+  const steps: UndoStep[] = []
+  let contactId = input.contactId
+
+  if (!contactId) {
+    const [firstName, ...rest] = input.name.trim().split(/\s+/)
+    const { data: contact, error: contactError } = await adminDb()
+      .from('contacts')
+      .insert({
+        first_name: firstName ?? input.name,
+        last_name: rest.join(' '),
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        source: 'telegram'
+      })
+      .select('id')
+      .single()
+
+    if (contactError) throw new Error(contactError.message)
+    contactId = contact.id as string
+    steps.push({ type: 'delete', table: 'contacts', id: contactId })
+  }
+
+  const projectPayload: any = {
+    kind: input.type,
+    title: [input.name, input.city].filter(Boolean).join(' — '),
+    stage: 'Nouveau contact',
+    created_from: 'telegram',
+  }
+
+  if (input.type === 'vente') {
+    projectPayload.property_city = input.city ?? null
+    projectPayload.property_type = input.propertyType ?? null
+    projectPayload.estimated_price_min = input.amount ?? null
+    projectPayload.note = input.note ?? input.sourceText
+    projectPayload.seller_name = input.name
+    projectPayload.seller_phone = input.phone ?? null
+    projectPayload.seller_email = input.email ?? null
+  } else {
+    projectPayload.communes = input.city ? [input.city] : null
+    projectPayload.type_bien = input.propertyType ?? null
+    projectPayload.budget_max = input.amount ?? null
+  }
+
+  const { data: project, error: projectError } = await adminDb()
+    .from('projects')
+    .insert(projectPayload)
+    .select('id')
+    .single()
+
+  if (projectError) throw new Error(projectError.message)
+  steps.push({ type: 'delete', table: 'projects', id: project.id as string })
+
+  const { data: pc, error: pcError } = await adminDb()
+    .from('project_contacts')
     .insert({
-      title: [input.name, input.city].filter(Boolean).join(' — '),
-      description: input.note ?? input.sourceText,
-      stage: 'Nouveau contact',
-      seller_name: input.name,
-      seller_phone: input.phone ?? null,
-      seller_email: input.email ?? null,
-      property_city: input.city ?? null,
-      property_type: input.propertyType ?? null,
-      estimated_price_min: input.amount ?? null,
-      source_channel: 'telegram',
-      created_from: 'telegram',
-      note: input.note ?? input.sourceText,
+      contact_id: contactId,
+      project_id: project.id,
+      role: input.type === 'vente' ? 'Vendeur' : 'Acquéreur'
     })
     .select('id')
     .single()
 
-  if (error) throw new Error(error.message)
+  if (pcError) throw new Error(pcError.message)
+  steps.push({ type: 'delete', table: 'project_contacts', id: pc.id as string })
 
   return record({
     chatId: input.chatId,
-    intent: 'contact_seller',
-    summary: `Nouveau vendeur — ${[input.name, input.city].filter(Boolean).join(', ')}`,
+    intent: 'create_project',
+    summary: `Nouveau projet (${input.type}) — ${[input.name, input.city].filter(Boolean).join(', ')}`,
     sourceText: input.sourceText,
-    targetTable: 'opportunities',
-    targetId: data.id as string,
-    steps: [{ type: 'delete', table: 'opportunities', id: data.id as string }],
-  })
-}
-
-export async function createBuyer(input: ContactInput): Promise<AppliedOperation> {
-  const [firstName, ...rest] = input.name.trim().split(/\s+/)
-
-  // Un acquéreur se matérialise par une chaîne prospect → lead → critères.
-  const { data: prospect, error: prospectError } = await adminDb()
-    .from('prospects')
-    .insert({
-      first_name: firstName ?? input.name,
-      last_name: rest.join(' '),
-      phone: input.phone ?? null,
-      email: input.email ?? null,
-    })
-    .select('id')
-    .single()
-  if (prospectError) throw new Error(prospectError.message)
-
-  const { data: lead, error: leadError } = await adminDb()
-    .from('leads')
-    .insert({
-      prospect_id: prospect.id,
-      tool: 'acheter',
-      commune: input.city ?? null,
-      source_channel: 'telegram',
-      form_data: { origine: 'telegram', message: input.sourceText },
-    })
-    .select('id')
-    .single()
-  if (leadError) throw new Error(leadError.message)
-
-  const { data: criteria, error: criteriaError } = await adminDb()
-    .from('buyer_criteria')
-    .insert({
-      lead_id: lead.id,
-      prospect_id: prospect.id,
-      type_bien: input.propertyType ?? null,
-      communes: input.city ? [input.city] : null,
-      budget_max: input.amount ?? null,
-      active: true,
-    })
-    .select('id')
-    .single()
-  if (criteriaError) throw new Error(criteriaError.message)
-
-  return record({
-    chatId: input.chatId,
-    intent: 'contact_buyer',
-    summary: `Nouvel acquéreur — ${[input.name, input.city].filter(Boolean).join(', ')}`,
-    sourceText: input.sourceText,
-    targetTable: 'buyer_criteria',
-    targetId: criteria.id as string,
-    steps: [
-      { type: 'delete', table: 'buyer_criteria', id: criteria.id as string },
-      { type: 'delete', table: 'leads', id: lead.id as string },
-      { type: 'delete', table: 'prospects', id: prospect.id as string },
-    ],
+    targetTable: 'projects',
+    targetId: project.id as string,
+    steps: steps.reverse(),
   })
 }
 
@@ -548,12 +435,6 @@ export async function undoOperation(chatId: number, ref?: number): Promise<strin
   return operation.summary as string
 }
 
-/**
- * Modifie une tâche existante : échéance, libellé, ou marquage « faite ».
- *
- * C'est la brique qui manquait. Sans elle, « ajoute une date à la tâche » n'a
- * qu'une issue possible pour le modèle — créer une seconde tâche.
- */
 export async function updateTask(input: {
   chatId: number
   sourceText: string
@@ -570,15 +451,15 @@ export async function updateTask(input: {
   }
 
   const { data: before } = await adminDb()
-    .from('opportunity_events')
-    .select('id, opportunity_id, content, due_at, completed_at')
+    .from('activities')
+    .select('id, project_id, content, title, due_at, completed_at')
     .eq('id', input.taskId)
     .eq('type', 'task')
     .maybeSingle()
 
   if (!before) {
     throw new Error(
-      "Tâche introuvable. Récupère son identifiant via lire_dossier avant de la modifier — n'en crée pas une nouvelle.",
+      "Tâche introuvable. Récupère son identifiant via lire_projet avant de la modifier — n'en crée pas une nouvelle.",
     )
   }
 
@@ -587,10 +468,14 @@ export async function updateTask(input: {
   if (content !== undefined) patch.content = content
   if (input.done !== undefined) patch.completed_at = input.done ? new Date().toISOString() : null
 
-  const { error } = await adminDb().from('opportunity_events').update(patch).eq('id', input.taskId)
+  const { error } = await adminDb().from('activities').update(patch).eq('id', input.taskId)
   if (error) throw new Error(error.message)
 
-  const dossier = await getDossier(before.opportunity_id as string)
+  let projet: Projet | null = null
+  if (before.project_id) {
+    projet = await getProject(before.project_id as string)
+  }
+
   const parts = [
     content !== undefined ? `libellé « ${content} »` : null,
     dueDate !== undefined ? (dueDate ? `échéance ${formatFrenchDate(dueDate)}` : 'échéance retirée') : null,
@@ -600,17 +485,18 @@ export async function updateTask(input: {
   return record({
     chatId: input.chatId,
     intent: 'task_update',
-    summary: `Tâche mise à jour — ${dossier ? dossierLabel(dossier) : 'dossier'} : ${parts.join(', ')}`,
+    summary: `Tâche mise à jour — ${projet ? projetLabel(projet) : 'projet'} : ${parts.join(', ')}`,
     sourceText: input.sourceText,
-    targetTable: 'opportunity_events',
+    targetTable: 'activities',
     targetId: input.taskId,
     steps: [
       {
         type: 'restore',
-        table: 'opportunity_events',
+        table: 'activities',
         id: input.taskId,
         values: {
           content: before.content ?? null,
+          title: before.title ?? null,
           due_at: before.due_at ?? null,
           completed_at: before.completed_at ?? null,
         },

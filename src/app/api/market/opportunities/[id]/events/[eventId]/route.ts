@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import type { Database, OpportunityEventType } from '@/types/supabase'
+import type { Database, ActivityType } from '@/types/supabase'
 
-type OpportunityEventUpdate = Database['public']['Tables']['opportunity_events']['Update']
+type ActivityUpdate = Database['public']['Tables']['activities']['Update']
 
-const VALID_TYPES: OpportunityEventType[] = [
+const VALID_TYPES: ActivityType[] = [
   'note',
   'task',
   'call',
@@ -39,7 +39,7 @@ export async function PATCH(
     const body = await req.json()
 
     const { data: existing, error: fetchError } = await supabaseAdmin
-      .from('opportunity_events')
+      .from('activities')
       .select('id, opportunity_id')
       .eq('id', eventId)
       .eq('opportunity_id', id)
@@ -49,8 +49,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Activité introuvable' }, { status: 404 })
     }
 
-    const update: OpportunityEventUpdate = {}
-    const type = asText(body.type) as OpportunityEventType | null
+    const update: ActivityUpdate = {}
+    const type = asText(body.type) as ActivityType | null
     if (type && VALID_TYPES.includes(type)) update.type = type
     if (body.title !== undefined) update.title = asText(body.title)
     if (body.content !== undefined) update.content = asText(body.content)
@@ -64,7 +64,7 @@ export async function PATCH(
     }
 
     const { data: event, error } = await supabaseAdmin
-      .from('opportunity_events')
+      .from('activities')
       .update(update)
       .eq('id', eventId)
       .eq('opportunity_id', id)
@@ -95,7 +95,7 @@ export async function DELETE(
     const { id, eventId } = await params
 
     const { data: existing, error: fetchError } = await supabaseAdmin
-      .from('opportunity_events')
+      .from('activities')
       .select('id')
       .eq('id', eventId)
       .eq('opportunity_id', id)
@@ -106,7 +106,7 @@ export async function DELETE(
     }
 
     const { error } = await supabaseAdmin
-      .from('opportunity_events')
+      .from('activities')
       .delete()
       .eq('id', eventId)
       .eq('opportunity_id', id)

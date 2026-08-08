@@ -24,6 +24,10 @@ type OpportunityRow = {
   next_action: string | null
   due_date: string | null
   seller_name: string | null
+  project_contacts?: {
+    role: string
+    contacts: { id: string; first_name: string; last_name: string; email: string | null; phone: string | null } | null
+  }[]
   seller_phone: string | null
   seller_email: string | null
   property_city: string | null
@@ -112,7 +116,9 @@ export function SellerOpportunityTable({ search, stageFilter, dueFilter }: Selle
         row.stage,
         row.source_channel,
         row.next_action,
-        row.seller_name,
+        row.project_contacts && row.project_contacts.length > 0
+          ? row.project_contacts.map(pc => pc.contacts?.first_name).filter(Boolean).join(' & ') || row.seller_name
+          : row.seller_name,
         row.seller_phone,
         row.seller_email,
         row.property_city,

@@ -47,7 +47,7 @@ describe('PATCH /api/market/dashboard/actions', () => {
 
     expect(response.status).toBe(200)
     expect(mocks.updates[0]).toMatchObject({
-      table: 'opportunity_events',
+      table: 'activities',
       field: 'id',
       value: 'event-1',
     })

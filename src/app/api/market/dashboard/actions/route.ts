@@ -40,7 +40,7 @@ async function updateAction(input: {
 }) {
   if (input.source === 'opportunity_event') {
     return supabaseAdmin
-      .from('opportunity_events')
+      .from('activities')
       .update(
         input.operation === 'complete'
           ? { completed_at: new Date().toISOString() }

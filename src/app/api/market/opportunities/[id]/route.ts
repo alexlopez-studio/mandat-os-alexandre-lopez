@@ -10,7 +10,7 @@ import {
 import type { Database, Json } from '@/types/supabase'
 
 type OpportunitiesUpdate = Database['public']['Tables']['opportunities']['Update']
-type OpportunityEventInsert = Database['public']['Tables']['opportunity_events']['Insert']
+type ActivityInsert = Database['public']['Tables']['activities']['Insert']
 
 const SELLER_OPPORTUNITY_FIELDS = [
   'seller_name',
@@ -82,9 +82,9 @@ async function enrichOpportunity(opportunity: Database['public']['Tables']['oppo
     sellerProperty = data?.[0] ?? null
   }
 
-  let events: Database['public']['Tables']['opportunity_events']['Row'][] = []
+  let events: Database['public']['Tables']['activities']['Row'][] = []
   const { data: eventRows, error: eventError } = await supabaseAdmin
-    .from('opportunity_events')
+    .from('activities')
     .select('*')
     .eq('opportunity_id', opportunity.id)
     .order('occurred_at', { ascending: false })
@@ -221,9 +221,9 @@ async function loadClientDossierLink(
   }
 }
 
-async function createOpportunityEvent(input: OpportunityEventInsert) {
+async function createActivity(input: ActivityInsert) {
   const { error } = await supabaseAdmin
-    .from('opportunity_events')
+    .from('activities')
     .insert(input)
 
   if (error && error.code !== 'PGRST205' && error.code !== '42P01') throw error
@@ -267,7 +267,7 @@ export async function GET(
 
     const { data: opportunity, error } = await supabaseAdmin
       .from('opportunities')
-      .select('*')
+      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))')
       .eq('id', id)
       .single()
 
@@ -405,7 +405,7 @@ export async function PATCH(
       .from('opportunities')
       .update(updateData)
       .eq('id', id)
-      .select()
+      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))')
       .single()
 
     if (error) {
@@ -420,12 +420,12 @@ export async function PATCH(
     }
 
     if (body.stage !== undefined && body.stage && body.stage !== existing.stage) {
-      await createOpportunityEvent({
+      await createActivity({
         opportunity_id: id,
         type: 'stage_change',
-        title: 'Étape modifiée',
-        content: `${existing.stage ?? '—'} → ${body.stage}`,
-        metadata: { from: existing.stage, to: body.stage },
+        title: `Changement d'étape : ${body.stage}`,
+        content: `L'opportunité a été déplacée vers : ${body.stage}`,
+        metadata: { from: opportunity.stage, to: body.stage } as Json,
         created_by: 'admin',
       })
 
@@ -434,7 +434,7 @@ export async function PATCH(
       }
 
       if (body.stage === LOST_STAGE && !normalizeText(body.note) && !normalizeText(opportunity.note)) {
-        await createOpportunityEvent({
+        await createActivity({
           opportunity_id: id,
           type: 'task',
           title: 'Motif de perte à renseigner',

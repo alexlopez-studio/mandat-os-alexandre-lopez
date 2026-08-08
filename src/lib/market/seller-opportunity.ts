@@ -43,13 +43,13 @@ function titleFromLead(lead: Lead, sellerProperty: SellerProperty | null) {
   return 'Opportunité vendeur'
 }
 
-async function appendOpportunityEvent(opportunityId: string, input: {
+async function appendActivity(opportunityId: string, input: {
   title: string
   content?: string
   metadata?: Record<string, unknown>
-  type?: Database['public']['Enums']['opportunity_event_type']
+  type?: Database['public']['Enums']['activity_type']
 }) {
-  const { error } = await supabaseAdmin.from('opportunity_events').insert({
+  const { error } = await supabaseAdmin.from('activities').insert({
     opportunity_id: opportunityId,
     type: input.type ?? 'system',
     title: input.title,
@@ -136,7 +136,7 @@ export async function ensureSellerOpportunityForLead(leadId: string) {
 
   const prospectOpportunity = await findOpportunityForProspect(lead)
   if (prospectOpportunity) {
-    await appendOpportunityEvent(prospectOpportunity.id, {
+    await appendActivity(prospectOpportunity.id, {
       title: 'Nouvelle estimation rattachée',
       content: 'Une nouvelle demande vendeur du même prospect a été détectée sans créer de doublon.',
       metadata: {
@@ -181,7 +181,7 @@ export async function ensureSellerOpportunityForLead(leadId: string) {
 
   if (error) throw error
 
-  await appendOpportunityEvent((opportunity as Opportunity).id, {
+  await appendActivity((opportunity as Opportunity).id, {
     title: 'Opportunité créée depuis le lead vendeur',
     metadata: {
       lead_id: leadId,
@@ -195,7 +195,7 @@ export async function ensureSellerOpportunityForLead(leadId: string) {
 
 export async function ensureClientDossierForSignedOpportunity(opportunity: Opportunity) {
   if (!opportunity.lead_id) {
-    await appendOpportunityEvent(opportunity.id, {
+    await appendActivity(opportunity.id, {
       title: 'Dossier client à préparer',
       content: 'Mandat signé sans lead rattaché : rattacher ou créer un lead avec email avant invitation client.',
       metadata: { quality_control: 'client_dossier_missing_lead' },
@@ -206,7 +206,7 @@ export async function ensureClientDossierForSignedOpportunity(opportunity: Oppor
 
   try {
     const result = await ensureClientDossierForLead(opportunity.lead_id)
-    await appendOpportunityEvent(opportunity.id, {
+    await appendActivity(opportunity.id, {
       title: 'Dossier client préparé',
       content: 'Le passage en mandat signé a préparé ou rattaché le dossier client vendeur.',
       metadata: {
@@ -217,7 +217,7 @@ export async function ensureClientDossierForSignedOpportunity(opportunity: Oppor
     })
     return result
   } catch (error) {
-    await appendOpportunityEvent(opportunity.id, {
+    await appendActivity(opportunity.id, {
       title: 'Dossier client à compléter',
       content: error instanceof Error ? error.message : 'Préparation du dossier client impossible.',
       metadata: {

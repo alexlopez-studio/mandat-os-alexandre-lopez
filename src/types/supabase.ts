@@ -58,6 +58,10 @@ export type OpportunityEventType =
   | 'note' | 'task' | 'call' | 'meeting'
   | 'email' | 'stage_change' | 'estimation' | 'system'
 
+export type ActivityType =
+  | 'note' | 'task' | 'call' | 'meeting'
+  | 'email' | 'stage_change' | 'estimation' | 'system'
+
 export type SyncStatus = 'running' | 'success' | 'error'
 
 export type ClientDocumentStatus =
@@ -82,6 +86,91 @@ export type Database = {
   public: {
     Tables: {
       // ── Tables existantes Phase B ──────────────────────────
+      contacts: {
+        Row: {
+          id: string
+          first_name: string
+          last_name: string
+          email: string | null
+          phone: string | null
+          source: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          first_name?: string
+          last_name?: string
+          email?: string | null
+          phone?: string | null
+          source?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          first_name?: string
+          last_name?: string
+          email?: string | null
+          phone?: string | null
+          source?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_contacts: {
+        Row: {
+          id: string
+          contact_id: string
+          opportunity_id: string | null
+          buyer_criteria_id: string | null
+          role: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          contact_id: string
+          opportunity_id?: string | null
+          buyer_criteria_id?: string | null
+          role: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          contact_id?: string
+          opportunity_id?: string | null
+          buyer_criteria_id?: string | null
+          role?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'project_contacts_contact_id_fkey'
+            columns: ['contact_id']
+            isOneToOne: false
+            referencedRelation: 'contacts'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'project_contacts_opportunity_id_fkey'
+            columns: ['opportunity_id']
+            isOneToOne: false
+            referencedRelation: 'opportunities'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'project_contacts_buyer_criteria_id_fkey'
+            columns: ['buyer_criteria_id']
+            isOneToOne: false
+            referencedRelation: 'buyer_criteria'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       prospects: {
         Row: {
           id: string
@@ -1198,11 +1287,13 @@ export type Database = {
           },
         ]
       }
-      opportunity_events: {
+      activities: {
         Row: {
           id: string
-          opportunity_id: string
-          type: OpportunityEventType
+          contact_id: string | null
+          opportunity_id: string | null
+          lead_id: string | null
+          type: ActivityType
           title: string | null
           content: string | null
           due_at: string | null
@@ -1215,8 +1306,10 @@ export type Database = {
         }
         Insert: {
           id?: string
-          opportunity_id: string
-          type?: OpportunityEventType
+          contact_id?: string | null
+          opportunity_id?: string | null
+          lead_id?: string | null
+          type?: ActivityType
           title?: string | null
           content?: string | null
           due_at?: string | null
@@ -1229,8 +1322,10 @@ export type Database = {
         }
         Update: {
           id?: string
-          opportunity_id?: string
-          type?: OpportunityEventType
+          contact_id?: string | null
+          opportunity_id?: string | null
+          lead_id?: string | null
+          type?: ActivityType
           title?: string | null
           content?: string | null
           due_at?: string | null
@@ -1243,12 +1338,26 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: 'opportunity_events_opportunity_id_fkey'
+            foreignKeyName: 'activities_contact_id_fkey'
+            columns: ['contact_id']
+            isOneToOne: false
+            referencedRelation: 'contacts'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'activities_opportunity_id_fkey'
             columns: ['opportunity_id']
             isOneToOne: false
             referencedRelation: 'opportunities'
             referencedColumns: ['id']
           },
+          {
+            foreignKeyName: 'activities_lead_id_fkey'
+            columns: ['lead_id']
+            isOneToOne: false
+            referencedRelation: 'leads'
+            referencedColumns: ['id']
+          }
         ]
       }
       opportunity_audience_snapshots: {
@@ -1988,10 +2097,15 @@ export type Database = {
       lead_event_kind: LeadEventKind
       warm_contact_status: WarmContactStatus
       warm_event_type: WarmEventType
+      opportunity_stage: OpportunityStage
       opportunity_event_type: OpportunityEventType
+      activity_type: ActivityType
       admin_role: AdminRole
       client_document_status: ClientDocumentStatus
       client_dossier_event_type: ClientDossierEventType
+      notification_priority: NotificationPriority
+      notification_status: NotificationStatus
+      property_status: PropertyStatus
     }
     CompositeTypes: {
       [_ in never]: never

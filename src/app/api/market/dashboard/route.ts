@@ -5,7 +5,7 @@ import type { Database } from '@/types/supabase'
 type Opportunity = Pick<
   Database['public']['Tables']['opportunities']['Row'],
   'id' | 'title' | 'stage' | 'priority' | 'next_action' | 'due_date' | 'follow_up_at' | 'created_at' | 'updated_at'
->
+> & { project_contacts?: { contact_id: string }[] }
 type BuyerCriteria = Pick<
   Database['public']['Tables']['buyer_criteria']['Row'],
   | 'id'
@@ -22,9 +22,9 @@ type BuyerCriteria = Pick<
   | 'matched_at'
   | 'created_at'
   | 'updated_at'
->
+> & { project_contacts?: { contact_id: string }[] }
 type OpportunityEvent = Pick<
-  Database['public']['Tables']['opportunity_events']['Row'],
+  Database['public']['Tables']['activities']['Row'],
   'id' | 'opportunity_id' | 'type' | 'title' | 'content' | 'due_at' | 'completed_at' | 'created_at'
 >
 type ClientDossier = Pick<
@@ -88,18 +88,18 @@ export async function GET() {
     ] = await Promise.all([
       supabaseAdmin
         .from('opportunities')
-        .select('id,title,stage,priority,next_action,due_date,follow_up_at,created_at,updated_at')
+        .select('id,title,stage,priority,next_action,due_date,follow_up_at,created_at,updated_at,project_contacts(contact_id)')
         .eq('is_test', false)
         .order('created_at', { ascending: false })
         .limit(500),
       supabaseAdmin
         .from('buyer_criteria')
-        .select('id,lead_id,type_bien,communes,budget_max,surface_min,pieces_min,active,stage,next_action,due_date,matched_at,created_at,updated_at')
+        .select('id,lead_id,type_bien,communes,budget_max,surface_min,pieces_min,active,stage,next_action,due_date,matched_at,created_at,updated_at,project_contacts(contact_id)')
         .order('created_at', { ascending: false })
         .limit(500),
       supabaseAdmin
-        .from('opportunity_events')
-        .select('id,opportunity_id,type,title,content,due_at,completed_at,created_at')
+        .from('activities')
+        .select('id,opportunity_id,lead_id,contact_id,type,title,content,due_at,completed_at,created_at')
         .is('completed_at', null)
         .order('due_at', { ascending: true, nullsFirst: false })
         .limit(500),
@@ -156,7 +156,7 @@ export async function GET() {
         .map((buyer) => actionFromBuyer(buyer)),
       ...opportunityEvents
         .filter((event) => Boolean(event.due_at))
-        .map((event) => actionFromOpportunityEvent(event, opportunityById.get(event.opportunity_id))),
+        .map((event) => actionFromOpportunityEvent(event, opportunityById.get(event.opportunity_id ?? ''))),
       ...clientEvents.map((event) => actionFromClientEvent(event, dossierById.get(event.dossier_id))),
       ...leads
         .filter((lead) => Boolean(lead.next_action))
@@ -227,7 +227,9 @@ function actionFromOpportunity(opportunity: Opportunity): DashboardAction {
     due_date: dueDate,
     bucket: bucketFor(dueDate),
     priority: opportunity.priority || 'normal',
-    href: `/app/opportunities/${opportunity.id}`,
+    href: opportunity.project_contacts?.[0]?.contact_id 
+      ? `/app/contacts/${opportunity.project_contacts[0].contact_id}` 
+      : `/app/opportunities/${opportunity.id}`,
     can_complete: false,
     can_postpone: true,
     created_at: opportunity.created_at,
@@ -250,7 +252,9 @@ function actionFromBuyer(buyer: BuyerCriteria): DashboardAction {
     due_date: buyer.due_date,
     bucket: bucketFor(buyer.due_date),
     priority: buyer.active ? 'active' : 'pause',
-    href: `/app/acheteurs/${buyer.lead_id}`,
+    href: buyer.project_contacts?.[0]?.contact_id 
+      ? `/app/contacts/${buyer.project_contacts[0].contact_id}` 
+      : `/app/acheteurs/${buyer.lead_id}`,
     can_complete: false,
     can_postpone: true,
     created_at: buyer.created_at,
@@ -267,7 +271,11 @@ function actionFromOpportunityEvent(event: OpportunityEvent, opportunity?: Oppor
     due_date: event.due_at,
     bucket: bucketFor(event.due_at),
     priority: event.type,
-    href: opportunity ? `/app/opportunities/${opportunity.id}` : '/app/opportunities',
+    href: opportunity?.project_contacts?.[0]?.contact_id 
+      ? `/app/contacts/${opportunity.project_contacts[0].contact_id}` 
+      : opportunity 
+        ? `/app/opportunities/${opportunity.id}` 
+        : '/app/opportunities',
     can_complete: true,
     can_postpone: true,
     created_at: event.created_at,
