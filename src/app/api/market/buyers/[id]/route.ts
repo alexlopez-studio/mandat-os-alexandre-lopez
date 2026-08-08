@@ -63,6 +63,17 @@ export async function GET(
 
     const projectId = buyer.id
 
+    // `buyer_criteria` est une vue sur `projects` qui n'expose pas
+    // `market_property_id` : on va le chercher sur la table source, dont l'id
+    // est le même que celui du projet acquéreur.
+    const { data: projectRow } = await supabaseAdmin
+      .from('projects')
+      .select('market_property_id')
+      .eq('id', projectId)
+      .maybeSingle()
+
+    const marketPropertyId = projectRow?.market_property_id ?? null
+
     const [linksRes, eventsRes, clientDossier, propertyRes] = await Promise.all([
       supabaseAdmin
         .from('project_contacts')
@@ -75,11 +86,11 @@ export async function GET(
         .order('occurred_at', { ascending: false })
         .order('created_at', { ascending: false }),
       loadBuyerClientDossierLink(buyer.lead_id || projectId),
-      buyer.market_property_id
+      marketPropertyId
         ? supabaseAdmin
             .from('market_properties')
             .select('id, title, city, zipcode, price, surface, rooms, property_type, url')
-            .eq('id', buyer.market_property_id)
+            .eq('id', marketPropertyId)
             .maybeSingle()
         : Promise.resolve({ data: null }),
     ])

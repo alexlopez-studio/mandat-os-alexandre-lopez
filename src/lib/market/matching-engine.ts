@@ -384,6 +384,10 @@ export async function runMatchingForProperty(
   const results: { buyer_lead_id: string; score: number }[] = []
 
   for (const buyer of buyers) {
+    // `match_results` est clé sur `buyer_lead_id` : un projet d'achat sans lead
+    // ne peut pas y être enregistré, on l'écarte du rapprochement.
+    if (!buyer.lead_id) continue
+
     const criteria: BuyerCriteria = {
       lead_id: buyer.lead_id,
       type_bien: buyer.type_bien,

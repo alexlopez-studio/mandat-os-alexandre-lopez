@@ -443,6 +443,9 @@ async function loadProspectForBuyer(buyer: BuyerCriteria) {
     if (data) return data as Pick<Prospect, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'>
   }
 
+  // Sans lead rattaché, il n'y a pas de prospect à remonter par cette voie.
+  if (!buyer.lead_id) return null
+
   const { data, error } = await supabaseAdmin
     .from('leads')
     .select(`

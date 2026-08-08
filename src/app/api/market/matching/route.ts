@@ -96,7 +96,9 @@ export async function POST(req: NextRequest) {
       }
 
       const results = await runMatchingForBuyer({
-        lead_id: criteria.lead_id,
+        // La requête filtre déjà sur ce lead : on réutilise l'entrée validée
+        // plutôt que la colonne, nullable au niveau du type.
+        lead_id: buyer_lead_id,
         type_bien: criteria.type_bien,
         communes: criteria.communes,
         budget_max: criteria.budget_max,

@@ -253,7 +253,8 @@ function actionFromBuyer(buyer: BuyerCriteria): DashboardAction {
   ].filter(Boolean).join(' · ')
 
   return {
-    id: buyer.lead_id,
+    // Un projet d'achat peut ne pas avoir de lead : son propre id l'identifie.
+    id: buyer.lead_id ?? buyer.id,
     source: 'buyer',
     source_label: 'Opportunité acquéreur',
     title: buyer.next_action ?? 'Action acquéreur',

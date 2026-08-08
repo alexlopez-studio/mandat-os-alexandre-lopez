@@ -1613,7 +1613,9 @@ export type Database = {
       buyer_criteria: {
         Row: {
           id: string
-          lead_id: string
+          // `buyer_criteria` est une vue sur `projects` (migration 038), où
+          // `lead_id` est nullable : un projet d'achat peut être créé sans lead.
+          lead_id: string | null
           prospect_id: string | null
           type_bien: string | null
           communes: string[] | null
@@ -1631,7 +1633,7 @@ export type Database = {
         }
         Insert: {
           id?: string
-          lead_id: string
+          lead_id?: string | null
           prospect_id?: string | null
           type_bien?: string | null
           communes?: string[] | null
@@ -1649,7 +1651,7 @@ export type Database = {
         }
         Update: {
           id?: string
-          lead_id?: string
+          lead_id?: string | null
           prospect_id?: string | null
           type_bien?: string | null
           communes?: string[] | null
