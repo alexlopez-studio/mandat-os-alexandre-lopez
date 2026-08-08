@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, LayoutGrid, List, Loader2, Mail, Phone, Plus, UserRound } from 'lucide-react'
+import { Check, ChevronRight, LayoutGrid, List, Loader2, Mail, Phone, Plus, UserRound, Archive, Star } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -48,8 +48,11 @@ import {
 import {
   CONTACT_TYPES,
   CONTACT_TYPE_META,
+  CONTACT_STATUS_META,
+  getContactStatus,
   normalizeContactTypes,
   type ContactType,
+  type ContactStatus,
 } from '@/lib/contact-types'
 import { cn } from '@/lib/utils'
 
@@ -62,6 +65,7 @@ interface Contact {
   company: string | null
   relation: string | null
   source: string | null
+  types: string[] | null
   all_types: string[] | null
   projects_count: number | null
 }
@@ -83,17 +87,19 @@ export default function ContactsListPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<ContactType | typeof ALL_TYPES_VALUE>(ALL_TYPES_VALUE)
+  const [statusTab, setStatusTab] = useState<'qualified' | 'prospects' | 'all' | 'archived'>('qualified')
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards')
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState({ ...EMPTY_FORM })
   const [formTypes, setFormTypes] = useState<ContactType[]>([])
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
   const loadContacts = useCallback(async (query: string, type: string) => {
     try {
       setLoading(true)
-      const params = new URLSearchParams({ q: query, limit: '100' })
+      const params = new URLSearchParams({ q: query, limit: '200' })
       if (type !== ALL_TYPES_VALUE) params.set('type', type)
       const res = await fetch(`/api/market/contacts/search?${params.toString()}`)
       if (!res.ok) throw new Error('Failed to fetch contacts')
@@ -114,6 +120,25 @@ export default function ContactsListPage() {
     return () => clearTimeout(timer)
   }, [search, typeFilter, loadContacts])
 
+  const handleUpdateStatus = async (contactId: string, newStatus: ContactStatus, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    setUpdatingId(contactId)
+    try {
+      const res = await fetch(`/api/market/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (!res.ok) throw new Error('Mise à jour statut impossible')
+      toast.success(newStatus === 'qualified' ? 'Contact qualifié !' : newStatus === 'archived' ? 'Contact archivé' : 'Statut mis à jour')
+      await loadContacts(search, typeFilter)
+    } catch {
+      toast.error('Erreur lors de la mise à jour')
+    } finally {
+      setUpdatingId(null)
+    }
+  }
+
   const toggleFormType = (type: ContactType) => {
     setFormTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
@@ -132,7 +157,7 @@ export default function ContactsListPage() {
       const res = await fetch('/api/market/contacts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, types: formTypes }),
+        body: JSON.stringify({ ...formData, types: [...formTypes, 'qualified'] }),
       })
 
       if (!res.ok) throw new Error('Erreur lors de la création')
@@ -151,11 +176,24 @@ export default function ContactsListPage() {
     }
   }
 
-  const countLabel = useMemo(() => {
-    if (loading) return 'Chargement…'
-    const suffix = contacts.length > 1 ? 's' : ''
-    return `${contacts.length} contact${suffix}`
-  }, [contacts.length, loading])
+  const filteredContacts = useMemo(() => {
+    return contacts.filter((contact) => {
+      const status = getContactStatus(contact)
+      if (statusTab === 'qualified') return status === 'qualified' || status === 'client'
+      if (statusTab === 'prospects') return status === 'prospect'
+      if (statusTab === 'archived') return status === 'archived'
+      return status !== 'archived' // 'all' view shows everything except archived
+    })
+  }, [contacts, statusTab])
+
+  const counts = useMemo(() => {
+    return {
+      qualified: contacts.filter(c => ['qualified', 'client'].includes(getContactStatus(c))).length,
+      prospects: contacts.filter(c => getContactStatus(c) === 'prospect').length,
+      all: contacts.filter(c => getContactStatus(c) !== 'archived').length,
+      archived: contacts.filter(c => getContactStatus(c) === 'archived').length,
+    }
+  }, [contacts])
 
   return (
     <PageLayout width="wide">
@@ -284,6 +322,42 @@ export default function ContactsListPage() {
       />
 
       <PageSection>
+        {/* Status Lifecycle Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-2 pb-2">
+          <Button
+            variant={statusTab === 'qualified' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusTab('qualified')}
+            className="rounded-full text-xs font-bold"
+          >
+            🌟 Qualifiés & Clients ({counts.qualified})
+          </Button>
+          <Button
+            variant={statusTab === 'prospects' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusTab('prospects')}
+            className="rounded-full text-xs font-bold"
+          >
+            📥 Nouveaux Prospects ({counts.prospects})
+          </Button>
+          <Button
+            variant={statusTab === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusTab('all')}
+            className="rounded-full text-xs font-bold"
+          >
+            📁 Tous ({counts.all})
+          </Button>
+          <Button
+            variant={statusTab === 'archived' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusTab('archived')}
+            className="rounded-full text-xs font-bold text-muted-foreground"
+          >
+            📦 Archivés ({counts.archived})
+          </Button>
+        </div>
+
         <DataToolbar
           variant="pill"
           filters={
@@ -340,14 +414,14 @@ export default function ContactsListPage() {
 
         {loading && contacts.length === 0 ? (
           <LoadingState variant="table" rows={6} label="Chargement des contacts" />
-        ) : contacts.length === 0 ? (
+        ) : filteredContacts.length === 0 ? (
           <EmptyState
             icon={UserRound}
             title="Aucun contact trouvé"
             description={
               search || typeFilter !== ALL_TYPES_VALUE
                 ? 'Modifiez la recherche ou le filtre de type.'
-                : 'Créez votre premier contact pour démarrer votre annuaire.'
+                : 'Aucun contact correspondant dans cet onglet.'
             }
             action={
               search || typeFilter !== ALL_TYPES_VALUE ? (
@@ -370,9 +444,9 @@ export default function ContactsListPage() {
             }
           />
         ) : viewMode === 'cards' ? (
-          /* Cards Grid View matching Fiche Projet cards */
+          /* Cards Grid View */
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {contacts.map((contact, idx) => {
+            {filteredContacts.map((contact, idx) => {
               const displayName =
                 [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() ||
                 'Contact sans nom'
@@ -380,6 +454,8 @@ export default function ContactsListPage() {
                 [contact.first_name?.[0], contact.last_name?.[0]].filter(Boolean).join('').toUpperCase() ||
                 'C'
               const types = normalizeContactTypes(contact.all_types)
+              const status = getContactStatus(contact)
+              const statusMeta = CONTACT_STATUS_META[status]
               const colors = [
                 'bg-sky-600 text-sky-50',
                 'bg-slate-700 text-slate-50',
@@ -395,15 +471,20 @@ export default function ContactsListPage() {
                   className="rounded-2xl border bg-card p-5 shadow-xs hover:border-primary/40 transition-all cursor-pointer flex flex-col justify-between space-y-4"
                 >
                   <div className="space-y-3">
-                    {/* Header Row: Avatar + Name + Typology */}
+                    {/* Header Row: Avatar + Name + Typology & Status */}
                     <div className="flex items-start gap-3">
                       <div className={cn("size-10 shrink-0 flex items-center justify-center rounded-full text-xs font-bold shadow-xs", avatarColor)}>
                         {initials}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-base font-bold text-foreground line-clamp-1 hover:text-primary transition-colors">
-                          {displayName}
-                        </h3>
+                        <div className="flex items-center justify-between gap-1">
+                          <h3 className="text-base font-bold text-foreground line-clamp-1 hover:text-primary transition-colors">
+                            {displayName}
+                          </h3>
+                          <Badge variant="outline" className={cn("text-[10px] uppercase font-bold shrink-0", statusMeta.className)}>
+                            {statusMeta.label}
+                          </Badge>
+                        </div>
                         {contact.company || contact.relation ? (
                           <p className="text-xs text-muted-foreground font-medium truncate mt-0.5">
                             {[contact.company, contact.relation].filter(Boolean).join(' • ')}
@@ -447,14 +528,39 @@ export default function ContactsListPage() {
                     </div>
                   </div>
 
-                  {/* Card Footer */}
+                  {/* Card Footer: Quick Actions */}
                   <div className="pt-3 border-t flex items-center justify-between gap-2">
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {contact.projects_count ? `${contact.projects_count} projet${contact.projects_count > 1 ? 's' : ''}` : 'Aucun projet'}
-                    </span>
-                    <Button variant="ghost" size="sm" className="text-xs font-semibold text-primary hover:text-primary/80 p-0 h-auto">
-                      Ouvrir <ChevronRight className="ml-0.5 size-3.5" />
-                    </Button>
+                    {status === 'prospect' ? (
+                      <div className="flex items-center gap-1.5 w-full">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={updatingId === contact.id}
+                          onClick={(e) => handleUpdateStatus(contact.id, 'qualified', e)}
+                          className="h-7 text-xs font-semibold rounded-full border-primary/30 text-primary hover:bg-primary/5 flex-1"
+                        >
+                          <Star className="mr-1 size-3 text-amber-500 fill-amber-500" /> Qualifier
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={updatingId === contact.id}
+                          onClick={(e) => handleUpdateStatus(contact.id, 'archived', e)}
+                          className="h-7 text-xs font-semibold rounded-full text-muted-foreground hover:text-destructive"
+                        >
+                          <Archive className="size-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-xs text-muted-foreground font-medium">
+                          {contact.projects_count ? `${contact.projects_count} projet${contact.projects_count > 1 ? 's' : ''}` : 'Aucun projet'}
+                        </span>
+                        <Button variant="ghost" size="sm" className="text-xs font-semibold text-primary hover:text-primary/80 p-0 h-auto">
+                          Ouvrir <ChevronRight className="ml-0.5 size-3.5" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
               )
@@ -467,6 +573,7 @@ export default function ContactsListPage() {
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40 border-b">
                   <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">CONTACT</TableHead>
+                  <TableHead className="hidden md:table-cell text-xs font-bold uppercase tracking-wider text-muted-foreground">STATUT</TableHead>
                   <TableHead className="hidden md:table-cell text-xs font-bold uppercase tracking-wider text-muted-foreground">TYPE</TableHead>
                   <TableHead className="hidden lg:table-cell text-xs font-bold uppercase tracking-wider text-muted-foreground">COORDONNÉES</TableHead>
                   <TableHead className="hidden xl:table-cell text-xs font-bold uppercase tracking-wider text-muted-foreground">SOCIÉTÉ / RELATION</TableHead>
@@ -474,7 +581,7 @@ export default function ContactsListPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {contacts.map((contact, idx) => {
+                {filteredContacts.map((contact, idx) => {
                   const displayName =
                     [contact.first_name, contact.last_name].filter(Boolean).join(' ').trim() ||
                     'Contact sans nom'
@@ -482,6 +589,8 @@ export default function ContactsListPage() {
                     [contact.first_name?.[0], contact.last_name?.[0]].filter(Boolean).join('').toUpperCase() ||
                     'C'
                   const types = normalizeContactTypes(contact.all_types)
+                  const status = getContactStatus(contact)
+                  const statusMeta = CONTACT_STATUS_META[status]
                   const colors = [
                     'bg-sky-600 text-sky-50',
                     'bg-slate-700 text-slate-50',
@@ -510,6 +619,9 @@ export default function ContactsListPage() {
                               {displayName}
                             </Link>
                             <div className="mt-1 flex items-center gap-2 md:hidden">
+                              <Badge variant="outline" className={cn("text-[10px] uppercase font-bold", statusMeta.className)}>
+                                {statusMeta.label}
+                              </Badge>
                               <ContactTypePills types={types} withIcon={false} />
                             </div>
                             <p className="truncate text-xs text-muted-foreground lg:hidden mt-0.5">
@@ -517,6 +629,11 @@ export default function ContactsListPage() {
                             </p>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell py-4">
+                        <Badge variant="outline" className={cn("text-xs font-bold uppercase", statusMeta.className)}>
+                          {statusMeta.label}
+                        </Badge>
                       </TableCell>
                       <TableCell className="hidden md:table-cell py-4">
                         <ContactTypePills types={types} />

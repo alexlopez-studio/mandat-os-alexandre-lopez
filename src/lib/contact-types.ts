@@ -34,3 +34,28 @@ export function normalizeContactTypes(values: unknown): ContactType[] {
   const set = new Set(values.filter(isContactType))
   return CONTACT_TYPES.filter((type) => set.has(type))
 }
+
+/**
+ * Statuts de qualification (Cycle de vie) des contacts.
+ */
+export const CONTACT_STATUSES = ['prospect', 'qualified', 'client', 'inactive', 'archived'] as const
+export type ContactStatus = (typeof CONTACT_STATUSES)[number]
+
+export type ContactStatusMeta = {
+  label: string
+  tone: 'brand' | 'success' | 'warning' | 'neutral'
+  className: string
+}
+
+export const CONTACT_STATUS_META: Record<ContactStatus, ContactStatusMeta> = {
+  prospect: { label: 'Prospect brut', tone: 'neutral', className: 'bg-slate-100 text-slate-700 border-slate-200' },
+  qualified: { label: 'Qualifié', tone: 'brand', className: 'bg-primary/10 text-primary border-primary/20' },
+  client: { label: 'Client actif', tone: 'success', className: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' },
+  inactive: { label: 'Inactif', tone: 'warning', className: 'bg-amber-500/10 text-amber-700 border-amber-500/20' },
+  archived: { label: 'Archivé', tone: 'neutral', className: 'bg-muted text-muted-foreground border-border' },
+}
+
+export function isContactStatus(value: unknown): value is ContactStatus {
+  return typeof value === 'string' && (CONTACT_STATUSES as readonly string[]).includes(value)
+}
+

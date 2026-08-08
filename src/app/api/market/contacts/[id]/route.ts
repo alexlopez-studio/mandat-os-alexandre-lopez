@@ -165,6 +165,11 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     if ('company' in body) payload.company = body.company || null
     if ('relation' in body) payload.relation = body.relation || null
     if ('types' in body) payload.types = normalizeContactTypes(body.types)
+    if ('status' in body && typeof body.status === 'string') {
+      const currentTypes = payload.types || []
+      const cleanedTypes = currentTypes.filter(t => !['prospect', 'qualified', 'client', 'inactive', 'archived'].includes(t))
+      payload.types = [...cleanedTypes, body.status]
+    }
 
     if (Object.keys(payload).length === 0) {
       return NextResponse.json({ error: 'Aucune donnée à mettre à jour' }, { status: 400 })
