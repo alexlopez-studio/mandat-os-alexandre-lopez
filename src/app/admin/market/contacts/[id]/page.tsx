@@ -15,7 +15,9 @@ import {
   Mail,
   MapPin,
   Phone,
+  Plus,
   Search,
+  Send,
   StickyNote,
   Trash2,
 } from 'lucide-react'
@@ -189,6 +191,34 @@ export default function ContactPage() {
    * et les activités du contact. `force` n'est envoyé qu'après confirmation
    * explicite dans la popup, qui annonce ce qui sera perdu.
    */
+  const [newNoteText, setNewNoteText] = useState('')
+  const [newNoteKind, setNewNoteKind] = useState<'note' | 'call' | 'email'>('note')
+  const [addingNote, setAddingNote] = useState(false)
+
+  const handleAddContactNote = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newNoteText.trim() || !params?.id) return
+    setAddingNote(true)
+    try {
+      const res = await fetch(`/api/market/contacts/${params.id}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: newNoteKind,
+          text: newNoteText.trim(),
+        }),
+      })
+      if (!res.ok) throw new Error('Impossible d\'ajouter la note')
+      toast.success('Note ajoutée au journal du contact')
+      setNewNoteText('')
+      await loadData()
+    } catch {
+      toast.error('Erreur lors de l\'enregistrement')
+    } finally {
+      setAddingNote(false)
+    }
+  }
+
   const handleDelete = async () => {
     try {
       setDeleting(true)
@@ -269,7 +299,27 @@ export default function ContactPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="font-semibold rounded-lg text-primary border-primary/30 hover:bg-primary/5"
+            >
+              <Link href={`/admin/market/opportunities/nouveau?kind=achat&contact_id=${contact.id}`}>
+                <Plus className="mr-1.5 size-4" /> Projet d'achat
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="font-semibold rounded-lg text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            >
+              <Link href={`/admin/market/opportunities/nouveau?kind=vente&contact_id=${contact.id}`}>
+                <Plus className="mr-1.5 size-4" /> Projet vendeur
+              </Link>
+            </Button>
             <Button variant="outline" size="sm" onClick={openEdit} className="font-semibold rounded-lg">
               <Edit className="mr-1.5 size-4" /> Modifier
             </Button>
@@ -414,12 +464,59 @@ export default function ContactPage() {
           <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-5">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                HISTORIQUE GLOBAL
+                JOURNAL D'ACTIVITÉ DU CONTACT
               </h2>
               <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
                 {activities.length} ACTIVITÉ{activities.length > 1 ? 'S' : ''}
               </Badge>
             </div>
+
+            {/* Formulaire d'ajout rapide d'une note au contact */}
+            <form onSubmit={handleAddContactNote} className="space-y-3 rounded-xl border p-4 bg-muted/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-foreground">Ajouter une note au journal</Label>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    variant={newNoteKind === 'note' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs rounded-full px-3 font-semibold"
+                    onClick={() => setNewNoteKind('note')}
+                  >
+                    <StickyNote className="mr-1 size-3" /> Note
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={newNoteKind === 'call' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs rounded-full px-3 font-semibold"
+                    onClick={() => setNewNoteKind('call')}
+                  >
+                    <Phone className="mr-1 size-3" /> Appel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={newNoteKind === 'email' ? 'default' : 'ghost'}
+                    size="sm"
+                    className="h-7 text-xs rounded-full px-3 font-semibold"
+                    onClick={() => setNewNoteKind('email')}
+                  >
+                    <Mail className="mr-1 size-3" /> E-mail
+                  </Button>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  placeholder="Saisir une note, compte-rendu d'appel ou remarque..."
+                  className="h-9 text-xs rounded-xl bg-background"
+                />
+                <Button type="submit" size="sm" disabled={addingNote || !newNoteText.trim()} className="h-9 rounded-xl font-bold px-4">
+                  {addingNote ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                </Button>
+              </div>
+            </form>
 
             {activities.length === 0 ? (
               <div className="rounded-xl border border-dashed p-5 text-center text-xs text-muted-foreground">

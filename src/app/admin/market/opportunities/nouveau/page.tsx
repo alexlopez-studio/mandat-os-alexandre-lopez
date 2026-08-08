@@ -143,6 +143,8 @@ function NouveauProjetContent() {
     criteres: [] as string[],
   })
 
+  const paramContactId = searchParams.get('contact_id')
+
   // Effect to handle kind switch defaults
   useEffect(() => {
     setForm(f => ({
@@ -150,9 +152,14 @@ function NouveauProjetContent() {
       stage: kind === 'vente' ? 'Nouveau contact' : 'Nouveau contact',
       nextAction: kind === 'vente' ? 'Qualifier le projet vendeur' : 'Qualifier la recherche',
     }))
-    setSelectedContactIds([])
-    setContactSearch('')
-  }, [kind])
+    if (paramContactId) {
+      setMode('existing')
+      setSelectedContactIds([paramContactId])
+    } else {
+      setSelectedContactIds([])
+      setContactSearch('')
+    }
+  }, [kind, paramContactId])
 
   const loadContacts = useCallback(async (q = '') => {
     try {
