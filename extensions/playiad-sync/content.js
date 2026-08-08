@@ -106,7 +106,7 @@
       }
 
       chrome.storage.sync.get(['mandatOsUrl'], async (data) => {
-        const baseUrl = data.mandatOsUrl || 'https://preview.alexlopez-provence.fr'
+        const baseUrl = data.mandatOsUrl || 'https://app.alexandrelopez.fr'
         const endpoint = `${baseUrl.replace(/\/$/, '')}/api/integrations/playiad/sync`
 
         try {
