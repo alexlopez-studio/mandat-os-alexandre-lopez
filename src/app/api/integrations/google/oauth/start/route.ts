@@ -9,8 +9,11 @@ import { NextRequest, NextResponse } from 'next/server'
  * Pour Drive on reste volontairement sur `drive.file`, qui ne donne accès qu'aux
  * fichiers créés ou ouverts depuis Mandat OS : c'est un scope non sensible, là
  * où un accès Drive complet imposerait une validation Google lourde.
+ *
+ * Non exporté : Next.js n'autorise dans un `route.ts` que ses propres exports
+ * (handlers HTTP, `runtime`, `dynamic`…) et fait échouer le build sur tout autre.
  */
-export const GOOGLE_SCOPES = [
+const GOOGLE_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/calendar.events',
