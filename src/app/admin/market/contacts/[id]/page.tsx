@@ -904,10 +904,12 @@ export default function ContactDetailPage() {
                   return (
                     <ToggleChip
                       key={type}
+                      icon={meta.icon}
                       selected={active}
                       onClick={() => toggleType(type)}
-                      label={meta.label}
-                    />
+                    >
+                      {meta.label}
+                    </ToggleChip>
                   )
                 })}
               </div>

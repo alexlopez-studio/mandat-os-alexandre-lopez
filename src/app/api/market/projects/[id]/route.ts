@@ -65,3 +65,42 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
   }
 }
+
+/**
+ * Suppression definitive d'un projet.
+ *
+ * Les dependances sont reglees par les cles etrangeres : `activities`,
+ * `opportunity_events`, `opportunity_meeting_links`, `property_notes`,
+ * `opportunity_audience_snapshots` et `project_contacts` sont supprimees en
+ * cascade ; `client_dossiers`, `estimation_imports` et `notifications` sont
+ * detachees (SET NULL). Les contacts eux-memes ne sont jamais supprimes, seul
+ * leur rattachement au projet disparait.
+ */
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  try {
+    const params = await props.params
+
+    const { data: project, error: readError } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', params.id)
+      .maybeSingle()
+
+    if (readError) throw readError
+    if (!project) {
+      return NextResponse.json({ error: 'Projet introuvable' }, { status: 404 })
+    }
+
+    const { error } = await supabaseAdmin.from('projects').delete().eq('id', params.id)
+
+    if (error) {
+      console.error('[API /market/projects/[id]] DELETE error:', error)
+      return NextResponse.json({ error: 'Erreur lors de la suppression du projet' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 })
+  } catch (error) {
+    console.error('[API /market/projects/[id]] DELETE error:', error)
+    return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
+  }
+}
