@@ -1,15 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Mandat OS — Sync Playiad Acquéreurs",
-  "version": "1.1.0",
-  "description": "Synchronise automatiquement les leads acquéreurs depuis Playiad (https://www.playiad.com/buyers/leads) directement dans votre CRM Mandat OS.",
-  "permissions": [
-    "activeTab",
-    "storage",
-    "alarms",
-    "notifications",
-    "scripting"
-  ],
+  "version": "2.1.0",
+  "description": "Importe les leads acquéreurs Playiad dans Mandat OS : bouton manuel sur la page et scan automatique plusieurs fois par jour.",
+  "permissions": ["storage", "alarms", "notifications", "scripting", "tabs"],
   "host_permissions": [
     "https://*.playiad.com/*",
     "https://*.playiad.fr/*",
@@ -22,9 +16,19 @@
   "background": {
     "service_worker": "background.js"
   },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Synchroniser Playiad avec Mandat OS"
+    "default_title": "Synchroniser Playiad avec Mandat OS",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "content_scripts": [
     {
@@ -34,7 +38,7 @@
         "https://*.iadfrance.fr/*",
         "https://*.myiad.fr/*"
       ],
-      "js": ["content.js"],
+      "js": ["extractor.js", "content.js"],
       "run_at": "document_idle"
     }
   ]

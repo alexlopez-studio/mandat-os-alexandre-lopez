@@ -6,23 +6,22 @@
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      width: 320px;
+      width: 340px;
       margin: 0;
       padding: 16px;
       background-color: #f8fafc;
       color: #0f172a;
     }
     h3 {
-      margin-top: 0;
-      margin-bottom: 8px;
+      margin: 0 0 8px;
       font-size: 16px;
       font-weight: 800;
       color: #00A0E2;
     }
-    p {
+    p.intro {
       font-size: 12px;
       color: #64748b;
-      margin-bottom: 14px;
+      margin: 0 0 14px;
       line-height: 1.4;
     }
     label {
@@ -34,7 +33,9 @@
       display: block;
       margin-bottom: 4px;
     }
-    input[type="text"] {
+    input[type="text"],
+    input[type="password"],
+    select {
       width: 100%;
       box-sizing: border-box;
       padding: 8px 12px;
@@ -42,10 +43,11 @@
       border-radius: 8px;
       font-size: 13px;
       margin-bottom: 14px;
+      background: #ffffff;
     }
     .toggle-group {
       display: flex;
-      items-center;
+      align-items: center;
       gap: 8px;
       margin-bottom: 16px;
       background: #ffffff;
@@ -62,40 +64,67 @@
     }
     button {
       width: 100%;
-      background-color: #00A0E2;
-      color: white;
       border: none;
       border-radius: 20px;
       padding: 10px;
       font-weight: 700;
       font-size: 13px;
       cursor: pointer;
+      margin-bottom: 8px;
     }
-    button:hover {
-      background-color: #0088c2;
-    }
+    button:disabled { opacity: 0.6; cursor: default; }
+    #saveBtn { background-color: #00A0E2; color: #ffffff; }
+    #saveBtn:hover:not(:disabled) { background-color: #0088c2; }
+    #dryRunBtn { background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; }
+    #dryRunBtn:hover:not(:disabled) { background-color: #f1f5f9; }
     .status {
-      margin-top: 12px;
+      margin-top: 8px;
       font-size: 11px;
-      text-align: center;
-      color: #16a34a;
-      font-weight: 600;
+      line-height: 1.5;
+      color: #475569;
+      white-space: pre-wrap;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      max-height: 160px;
+      overflow-y: auto;
     }
+    .status:empty { display: none; }
+    .status.ok { color: #15803d; border-color: #bbf7d0; }
+    .status.error { color: #b91c1c; border-color: #fecaca; }
+    .hint { font-size: 10px; color: #94a3b8; margin: -10px 0 14px; }
   </style>
 </head>
 <body>
-  <h3>Mandat OS x Playiad</h3>
-  <p>Synchronisez en 1 clic vos leads acquéreurs depuis l'intranet iad vers Mandat OS.</p>
+  <h3>Mandat OS × Playiad</h3>
+  <p class="intro">Importe les leads acquéreurs Playiad dans Mandat OS, à la demande ou automatiquement.</p>
 
   <label for="mandatUrl">URL du serveur Mandat OS</label>
-  <input type="text" id="mandatUrl" value="https://app.alexandrelopez.fr">
+  <input type="text" id="mandatUrl" placeholder="https://app.alexandrelopez.fr">
+
+  <label for="syncKey">Clé de synchronisation</label>
+  <input type="password" id="syncKey" placeholder="PLAYIAD_SYNC_SECRET">
+  <p class="hint">Doit correspondre à la variable <code>PLAYIAD_SYNC_SECRET</code> du serveur.</p>
+
+  <label for="leadsUrl">Page des leads acquéreurs</label>
+  <input type="text" id="leadsUrl" placeholder="https://www.playiad.com/buyers/leads">
+
+  <label for="interval">Fréquence du scan automatique</label>
+  <select id="interval">
+    <option value="120">Toutes les 2 heures</option>
+    <option value="360">Toutes les 6 heures (4×/jour)</option>
+    <option value="720">Toutes les 12 heures</option>
+    <option value="1440">Une fois par jour</option>
+  </select>
 
   <div class="toggle-group">
     <input type="checkbox" id="autoSync" checked>
-    <label for="autoSync">Auto-sync silencieuse (toutes les 15 min)</label>
+    <label for="autoSync">Activer le scan automatique</label>
   </div>
 
-  <button id="saveBtn">Enregistrer la configuration</button>
+  <button id="saveBtn">Enregistrer</button>
+  <button id="dryRunBtn">Tester sans rien importer</button>
   <div id="status" class="status"></div>
 
   <script src="popup.js"></script>

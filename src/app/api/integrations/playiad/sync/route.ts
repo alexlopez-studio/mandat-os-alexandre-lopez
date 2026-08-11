@@ -1,229 +1,252 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { upsertCrmProspect } from '@/lib/leads-crm'
+import { buildProjectTitle } from '@/lib/project-stages'
+import {
+  leadDedupKey,
+  leadIdentityKeys,
+  normalizeEmail,
+  normalizePhone,
+  parseNumber,
+  parseText,
+  type PlayiadLeadPayload,
+} from '@/lib/playiad/leads'
 
-export type PlayiadLeadPayload = {
-  playiad_id?: string
-  first_name?: string
-  last_name?: string
-  email?: string
-  phone?: string
-  source?: string
-  property_ref?: string
-  property_title?: string
-  city?: string
-  property_type?: string
-  budget_max?: number
-  message?: string
+export const dynamic = 'force-dynamic'
+
+type SyncOutcome = {
+  key: string
+  name: string
+  status: 'created' | 'already_known' | 'invalid_data' | 'error'
+  project_id?: string
+  reason?: string
 }
 
-function parseText(val: unknown): string | null {
-  if (typeof val !== 'string') return null
-  const trimmed = val.trim()
-  return trimmed || null
-}
-
-function parseNumber(val: unknown): number | null {
-  if (val === null || val === undefined || val === '') return null
-  const num = Number(val)
-  return Number.isFinite(num) ? num : null
-}
-
-export async function GET(_req: NextRequest) {
-  try {
-    const { data: events, error } = await supabaseAdmin
-      .from('lead_events')
-      .select('id, lead_id, payload, created_at')
-      .eq('kind', 'system' as never)
-      .order('created_at', { ascending: false })
-      .limit(30)
-
-    if (error) {
-      console.error('[API /integrations/playiad/sync] GET error:', error)
-      return NextResponse.json({ error: 'Erreur lecture historique' }, { status: 500 })
-    }
-
-    const playiadEvents = (events || []).filter((e: any) => e.payload?.source === 'Playiad')
-
-    return NextResponse.json({ success: true, history: playiadEvents })
-  } catch (e) {
-    console.error('[API /integrations/playiad/sync] GET exception:', e)
-    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
-  }
+function isAuthorized(req: NextRequest): boolean {
+  const expected = process.env.PLAYIAD_SYNC_SECRET
+  // Sans secret configure, l'endpoint reste ferme : il ecrit dans le CRM et ne
+  // doit jamais etre ouvert par defaut.
+  if (!expected) return false
+  const provided = req.headers.get('x-mandat-os-key')
+  return typeof provided === 'string' && provided === expected
 }
 
 export async function POST(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json(
+      { error: 'Clé de synchronisation absente ou invalide' },
+      { status: 401 },
+    )
+  }
+
   try {
     const body = await req.json()
-    const leadsRaw = Array.isArray(body.leads) ? body.leads : [body]
+    const leadsRaw: unknown[] = Array.isArray(body.leads) ? body.leads : [body]
+    // Mode simulation : renvoie ce qui serait importe sans rien ecrire. Sert a
+    // valider les selecteurs de l'extension sur la vraie page Playiad.
+    const dryRun = body.dryRun === true
 
     if (leadsRaw.length === 0) {
       return NextResponse.json({ error: 'Aucun lead transmis' }, { status: 400 })
     }
 
-    // 1. Récupérer les ID Playiad déjà enregistrés pour l'idempotence
-    const { data: existingEvents } = await supabaseAdmin
-      .from('lead_events')
-      .select('payload')
-      .eq('kind', 'system' as never)
-
-    const processedPlayiadIds = new Set<string>()
-    existingEvents?.forEach((row: any) => {
-      if (row.payload?.playiad_id) {
-        processedPlayiadIds.add(String(row.payload.playiad_id))
+    const normalized = leadsRaw.map((raw) => {
+      const item = (raw ?? {}) as PlayiadLeadPayload
+      return {
+        playiadId: parseText(item.playiad_id),
+        firstName: parseText(item.first_name),
+        lastName: parseText(item.last_name),
+        email: normalizeEmail(item.email),
+        phone: normalizePhone(item.phone),
+        source: parseText(item.source) || 'Playiad',
+        propertyRef: parseText(item.property_ref),
+        propertyTitle: parseText(item.property_title),
+        propertyType: parseText(item.property_type),
+        city: parseText(item.city),
+        budgetMax: parseNumber(item.budget_max),
+        message: parseText(item.message),
       }
     })
 
+    // Un meme acquereur peut apparaitre plusieurs fois dans une page scrapee.
+    const seenInBatch = new Set<string>()
+    const outcomes: SyncOutcome[] = []
     let createdCount = 0
     let skippedCount = 0
     let errorCount = 0
-    const results: Array<{ playiad_id?: string; name?: string; status: string; buyer_id?: string }> = []
 
-    for (const leadItem of leadsRaw) {
-      const playiadId = parseText(leadItem.playiad_id)
-      const firstName = parseText(leadItem.first_name)
-      const lastName = parseText(leadItem.last_name)
-      const email = parseText(leadItem.email)?.toLowerCase() ?? null
-      const phone = parseText(leadItem.phone)
-      const source = parseText(leadItem.source) || 'Playiad'
-      const propertyRef = parseText(leadItem.property_ref)
-      const propertyTitle = parseText(leadItem.property_title)
-      const propertyType = parseText(leadItem.property_type)
-      const budgetMax = parseNumber(leadItem.budget_max)
-      const message = parseText(leadItem.message)
+    for (const lead of normalized) {
+      const displayName =
+        [lead.firstName, lead.lastName].filter(Boolean).join(' ') || 'Acquéreur sans nom'
+      const key = leadDedupKey(lead)
 
-      if (playiadId && processedPlayiadIds.has(playiadId)) {
-        skippedCount += 1
-        results.push({ playiad_id: playiadId, status: 'already_processed' })
-        continue
-      }
-
-      if (!email && !phone && !firstName && !lastName) {
+      if (!key) {
         errorCount += 1
-        results.push({ playiad_id: playiadId || undefined, status: 'invalid_data' })
+        outcomes.push({
+          key: '—',
+          name: displayName,
+          status: 'invalid_data',
+          reason: 'Ni e-mail, ni téléphone exploitable',
+        })
         continue
       }
+
+      const identities = leadIdentityKeys(lead)
+      if (identities.some((identity) => seenInBatch.has(identity))) {
+        skippedCount += 1
+        outcomes.push({ key, name: displayName, status: 'already_known', reason: 'Doublon dans la page' })
+        continue
+      }
+      identities.forEach((identity) => seenInBatch.add(identity))
 
       try {
-        // A. Insérer ou récupérer dans `contacts` (Annuaire principal)
+        // 1. Le contact existe-t-il deja dans l'annuaire ?
         let contactId: string | null = null
-        if (email) {
-          const { data: existingC } = await supabaseAdmin
+        if (lead.email) {
+          const { data } = await supabaseAdmin
             .from('contacts')
             .select('id')
-            .eq('email', email)
+            .eq('email', lead.email)
             .maybeSingle()
-          if (existingC?.id) contactId = existingC.id
+          contactId = data?.id ?? null
         }
-        if (!contactId && phone) {
-          const { data: existingP } = await supabaseAdmin
+        if (!contactId && lead.phone) {
+          const { data } = await supabaseAdmin
             .from('contacts')
             .select('id')
-            .eq('phone', phone)
+            .eq('phone', lead.phone)
             .maybeSingle()
-          if (existingP?.id) contactId = existingP.id
+          contactId = data?.id ?? null
         }
 
+        // 2. A-t-il deja un projet d'achat ouvert ? C'est le vrai critere
+        //    d'idempotence : re-scraper la meme page ne doit rien recreer.
+        if (contactId) {
+          const { data: links } = await supabaseAdmin
+            .from('project_contacts')
+            .select('opportunity_id, buyer_criteria_id')
+            .eq('contact_id', contactId)
+
+          const projectIds = (links ?? [])
+            .map((link) => link.buyer_criteria_id || link.opportunity_id)
+            .filter((id): id is string => Boolean(id))
+
+          if (projectIds.length > 0) {
+            const { data: openBuyerProjects } = await supabaseAdmin
+              .from('projects')
+              .select('id')
+              .in('id', projectIds)
+              .eq('kind', 'achat')
+              .neq('active', false)
+
+            if ((openBuyerProjects ?? []).length > 0) {
+              skippedCount += 1
+              outcomes.push({
+                key,
+                name: displayName,
+                status: 'already_known',
+                reason: 'Projet acquéreur déjà ouvert',
+                project_id: openBuyerProjects![0].id,
+              })
+              continue
+            }
+          }
+        }
+
+        if (dryRun) {
+          createdCount += 1
+          outcomes.push({ key, name: displayName, status: 'created', reason: 'Simulation' })
+          continue
+        }
+
+        // 3. Creer le contact si besoin
         if (!contactId) {
-          const { data: newC, error: cErr } = await supabaseAdmin
+          const { data: newContact, error: contactError } = await supabaseAdmin
             .from('contacts')
             .insert({
-              first_name: firstName || 'Acquéreur',
-              last_name: lastName || 'Playiad',
-              email,
-              phone,
-              source,
+              first_name: lead.firstName || 'Acquéreur',
+              last_name: lead.lastName || 'Playiad',
+              email: lead.email,
+              phone: lead.phone,
+              source: lead.source,
               types: ['acquereur'],
+              status: 'prospect',
             })
             .select('id')
             .single()
 
-          if (!cErr && newC) {
-            contactId = newC.id
+          if (contactError || !newContact) {
+            throw new Error(contactError?.message || 'Création du contact impossible')
           }
+          contactId = newContact.id
         }
 
-        // B. Upsert dans `prospects` pour la gestion CRM
-        const prospect = await upsertCrmProspect({
-          email,
-          firstName: firstName || 'Acquéreur',
-          lastName: lastName || 'Playiad',
-          phone,
-        }).catch(() => null)
+        // 4. Creer le projet d'achat
+        const criteres = [`Source: ${lead.source}`]
+        if (lead.propertyRef) criteres.push(`Réf annonce: ${lead.propertyRef}`)
+        if (lead.propertyTitle) criteres.push(`Bien: ${lead.propertyTitle}`)
+        if (lead.message) criteres.push(`Message: ${lead.message}`)
 
-        // C. Créer le Projet d'Achat (`buyer_criteria`)
-        const criteresList = [`Source: ${source}`]
-        if (propertyRef) criteresList.push(`Ref: ${propertyRef}`)
-        if (propertyTitle) criteresList.push(`Bien: ${propertyTitle}`)
-        if (message) criteresList.push(`Note: ${message}`)
+        const title =
+          buildProjectTitle({
+            contactLastNames: lead.lastName ? [lead.lastName] : [],
+            propertyType: lead.propertyType,
+          }) || `${displayName.toUpperCase()} - Recherche`
 
-        const { data: buyer, error: buyerErr } = await supabaseAdmin
-          .from('buyer_criteria')
+        const { data: project, error: projectError } = await supabaseAdmin
+          .from('projects')
           .insert({
-            prospect_id: prospect?.id || contactId || null,
-            type_bien: propertyType,
-            budget_max: budgetMax,
-            criteres: criteresList,
-            active: true,
+            kind: 'achat',
+            title,
             stage: 'Nouveau contact',
-            next_action: `Qualifier la demande Playiad (${propertyTitle || propertyRef || 'Acquéreur'})`,
+            priority: 'normal',
+            active: true,
+            type_bien: lead.propertyType,
+            budget_max: lead.budgetMax,
+            communes: lead.city ? [lead.city] : null,
+            criteres,
+            next_action: `Qualifier la demande ${lead.source}`,
           })
-          .select('*')
+          .select('id')
           .single()
 
-        if (buyerErr || !buyer) {
-          throw new Error(`Création projet acquéreur impossible: ${buyerErr?.message || 'Erreur'}`)
+        if (projectError || !project) {
+          throw new Error(projectError?.message || 'Création du projet impossible')
         }
 
-        // D. Jointure `project_contacts`
-        if (contactId) {
-          await supabaseAdmin.from('project_contacts').insert({
-            contact_id: contactId,
-            buyer_criteria_id: buyer.id,
-            role: 'Acquéreur principal',
-          })
-        }
-
-        // E. Event d'idempotence dans `lead_events`
-        await supabaseAdmin.from('lead_events').insert({
-          lead_id: buyer.id,
-          kind: 'system' as never,
-          payload: {
-            source: 'Playiad',
-            playiad_id: playiadId || buyer.id,
-            contact_id: contactId,
-            property_ref: propertyRef,
-            property_title: propertyTitle,
-          },
-          created_by: 'system',
-        } as never)
+        // 5. Rattacher le contact au projet
+        await supabaseAdmin.from('project_contacts').insert({
+          contact_id: contactId,
+          buyer_criteria_id: project.id,
+          role: 'Acquéreur principal',
+        })
 
         createdCount += 1
-        results.push({
-          playiad_id: playiadId || buyer.id,
-          name: [firstName, lastName].filter(Boolean).join(' ') || 'Acquéreur',
-          status: 'created',
-          buyer_id: buyer.id,
-        })
-      } catch (itemErr) {
+        outcomes.push({ key, name: displayName, status: 'created', project_id: project.id })
+      } catch (itemError) {
         errorCount += 1
-        results.push({
-          playiad_id: playiadId || undefined,
+        outcomes.push({
+          key,
+          name: displayName,
           status: 'error',
+          reason: itemError instanceof Error ? itemError.message : 'Erreur inconnue',
         })
       }
     }
 
     return NextResponse.json({
       success: true,
-      total: leadsRaw.length,
+      dryRun,
+      total: normalized.length,
       createdCount,
       skippedCount,
       errorCount,
-      results,
+      results: outcomes,
     })
   } catch (e) {
     console.error('[API /integrations/playiad/sync] POST exception:', e)
-    return NextResponse.json({ error: 'Erreur serveur lors de la synchronisation Playiad' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Erreur serveur lors de la synchronisation Playiad' },
+      { status: 500 },
+    )
   }
 }
