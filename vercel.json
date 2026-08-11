@@ -2,7 +2,6 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "crons": [
-    { "path": "/api/jobs/sync-zones", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/scan-emails", "schedule": "0 6 * * *" }
+    { "path": "/api/jobs/sync-zones", "schedule": "0 3 * * *" }
   ]
 }
