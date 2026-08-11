@@ -7,6 +7,7 @@ import { KanbanIcon, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -15,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { EmptyState } from '@/components/pro'
+import { EmptyState, type ViewMode } from '@/components/pro'
 import {
   projectDetailHref,
   type ProjectRow,
@@ -26,7 +27,12 @@ type ProjectTableProps = {
   projects: ProjectRow[]
   hasFilters: boolean
   onResetFilters: () => void
-  viewMode?: 'table' | 'cards'
+  /** Le mode kanban est rendu par ProjectKanbanBoard, jamais par ce composant. */
+  viewMode?: ViewMode
+  /** Selection multiple de la vue tableau. Omise, la colonne de cases disparait. */
+  selectedIds?: string[]
+  onToggleSelect?: (projectId: string) => void
+  onToggleSelectAll?: () => void
 }
 
 function formatDueDate(dueDateStr: string | null | undefined) {
@@ -51,8 +57,19 @@ function formatDueDate(dueDateStr: string | null | undefined) {
   }
 }
 
-export function ProjectTable({ projects, hasFilters, onResetFilters, viewMode = 'cards' }: ProjectTableProps) {
+export function ProjectTable({
+  projects,
+  hasFilters,
+  onResetFilters,
+  viewMode = 'cards',
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+}: ProjectTableProps) {
   const router = useRouter()
+  const selectable = Boolean(selectedIds && onToggleSelect && onToggleSelectAll)
+  const allSelected =
+    selectable && projects.length > 0 && projects.every((project) => selectedIds!.includes(project.id))
 
   if (projects.length === 0) {
     return (
@@ -191,6 +208,15 @@ export function ProjectTable({ projects, hasFilters, onResetFilters, viewMode = 
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/40 hover:bg-muted/40 border-b">
+            {selectable ? (
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={onToggleSelectAll}
+                  aria-label="Tout sélectionner"
+                />
+              </TableHead>
+            ) : null}
             <TableHead className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
               PROJET & COMMUNE
             </TableHead>
@@ -226,9 +252,20 @@ export function ProjectTable({ projects, hasFilters, onResetFilters, viewMode = 
             return (
               <TableRow
                 key={project.id}
+                data-state={selectable && selectedIds!.includes(project.id) ? 'selected' : undefined}
                 onClick={href ? () => router.push(href) : undefined}
                 className={cn('transition-colors hover:bg-muted/30', href && 'cursor-pointer')}
               >
+                {selectable ? (
+                  <TableCell className="py-4" onClick={(event) => event.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds!.includes(project.id)}
+                      onCheckedChange={() => onToggleSelect!(project.id)}
+                      aria-label={`Sélectionner ${title}`}
+                    />
+                  </TableCell>
+                ) : null}
+
                 {/* PROJET & COMMUNE */}
                 <TableCell className="py-4">
                   <div className="flex flex-col min-w-0 max-w-xs">

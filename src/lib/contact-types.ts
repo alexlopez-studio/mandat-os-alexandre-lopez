@@ -59,3 +59,34 @@ export function isContactStatus(value: unknown): value is ContactStatus {
   return typeof value === 'string' && (CONTACT_STATUSES as readonly string[]).includes(value)
 }
 
+export function getContactStatus(contact: {
+  status?: string | null
+  source?: string | null
+  projects_count?: number | null
+  types?: string[] | null
+  all_types?: string[] | null
+}): ContactStatus {
+  if (contact.status && isContactStatus(contact.status)) {
+    return contact.status
+  }
+  const types = contact.types || contact.all_types || []
+  if (types.includes('archived')) return 'archived'
+  if (types.includes('inactive')) return 'inactive'
+  if (types.includes('prospect')) return 'prospect'
+  if (types.includes('qualified')) return 'qualified'
+  if (types.includes('client')) return 'client'
+
+  if ((contact.projects_count ?? 0) > 0) return 'client'
+
+  if (
+    contact.source &&
+    (contact.source.toLowerCase().includes('playiad') ||
+      contact.source.toLowerCase().includes('email') ||
+      contact.source.toLowerCase().includes('seloger'))
+  ) {
+    return 'prospect'
+  }
+
+  return 'qualified'
+}
+
