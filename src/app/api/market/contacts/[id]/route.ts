@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { normalizeContactTypes } from '@/lib/contact-types'
+import { isContactStatus, normalizeContactTypes } from '@/lib/contact-types'
 import type { Database } from '@/types/supabase'
 
 export const dynamic = 'force-dynamic'
@@ -165,10 +165,13 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
     if ('company' in body) payload.company = body.company || null
     if ('relation' in body) payload.relation = body.relation || null
     if ('types' in body) payload.types = normalizeContactTypes(body.types)
-    if ('status' in body && typeof body.status === 'string') {
-      const currentTypes = payload.types || []
-      const cleanedTypes = currentTypes.filter(t => !['prospect', 'qualified', 'client', 'inactive', 'archived'].includes(t))
-      payload.types = [...cleanedTypes, body.status]
+    // Le statut a sa propre colonne (migration 043) : `types` reste reserve aux
+    // typologies metier, que la contrainte `contacts_types_valid` verrouille.
+    if ('status' in body) {
+      if (!isContactStatus(body.status)) {
+        return NextResponse.json({ error: 'Statut invalide' }, { status: 400 })
+      }
+      payload.status = body.status
     }
 
     if (Object.keys(payload).length === 0) {

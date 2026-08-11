@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { normalizeContactTypes } from '@/lib/contact-types'
+import { isContactStatus, normalizeContactTypes } from '@/lib/contact-types'
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { first_name, last_name, email, phone, company, relation, source, types } = body
+    const { first_name, last_name, email, phone, company, relation, source, types, status } = body
 
     const { data: contact, error } = await supabaseAdmin
       .from('contacts')
@@ -18,6 +18,7 @@ export async function POST(req: Request) {
         relation: relation || null,
         source: source || 'system',
         types: normalizeContactTypes(types),
+        status: isContactStatus(status) ? status : 'qualified',
       })
       .select('*')
       .single()

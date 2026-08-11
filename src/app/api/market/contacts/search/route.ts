@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('contacts_directory')
-      .select('id, first_name, last_name, email, phone, company, relation, source, types, all_types, projects_count')
+      .select('id, first_name, last_name, email, phone, company, relation, source, types, all_types, projects_count, status')
 
     if (q) {
       // Or search across names, email, phone, company
