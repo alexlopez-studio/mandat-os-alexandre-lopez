@@ -4,9 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
+  AlertCircle,
   ArrowLeft,
+  BarChart3,
   Building2,
   Calendar,
+  CalendarDays,
   CheckCircle2,
   ChevronDown,
   Clock,
@@ -14,20 +17,22 @@ import {
   Edit,
   FileText,
   FolderOpen,
+  History,
   Home,
   LayoutDashboard,
   Link2,
   Loader2,
   Mail,
   MoreHorizontal,
+  PenTool,
   Phone,
   Plus,
-  History,
   Rocket,
   Search,
   Sparkles,
   StickyNote,
   Trash2,
+  UserPlus,
   UserRound,
   X,
   XCircle,
@@ -329,6 +334,31 @@ const STAGES = [
   'Vendu',
   'Perdu / Écarté',
 ]
+
+function getStageTheme(stageName: string) {
+  switch (stageName) {
+    case 'Nouveau contact':
+      return { icon: UserPlus, colorClass: 'border-blue-500/30 bg-blue-500/10 text-blue-600' }
+    case 'Pré-estimation':
+      return { icon: FileText, colorClass: 'border-cyan-500/30 bg-cyan-500/10 text-cyan-600' }
+    case "Visite d'estimation":
+      return { icon: Home, colorClass: 'border-indigo-500/30 bg-indigo-500/10 text-indigo-600' }
+    case "Remise de l'estimation":
+      return { icon: BarChart3, colorClass: 'border-purple-500/30 bg-purple-500/10 text-purple-600' }
+    case 'Décision vendeur':
+      return { icon: Clock, colorClass: 'border-amber-500/30 bg-amber-500/10 text-amber-600' }
+    case 'Suivi moyen terme':
+      return { icon: CalendarDays, colorClass: 'border-sky-500/30 bg-sky-500/10 text-sky-600' }
+    case 'Mandat signé':
+      return { icon: PenTool, colorClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-bold' }
+    case 'Vendu':
+      return { icon: Sparkles, colorClass: 'border-emerald-600/40 bg-emerald-600/15 text-emerald-700 font-bold' }
+    case 'Perdu / Écarté':
+      return { icon: AlertCircle, colorClass: 'border-rose-500/30 bg-rose-500/10 text-rose-600' }
+    default:
+      return { icon: Rocket, colorClass: 'border-primary/30 bg-primary/10 text-primary' }
+  }
+}
 
 const CLIENT_DOSSIER_STATUS_LABELS: Record<string, string> = {
   draft: 'Brouillon',
@@ -1557,29 +1587,36 @@ export default function OpportunityDetailPage() {
       </div>
 
       {/* Top Banner Card (Fiche Projet Header) */}
-      <div className="rounded-2xl border bg-card p-6 shadow-xs space-y-6">
+      <div className="rounded-2xl border bg-card p-6 shadow-2xs space-y-5">
         {/* Top Header Row */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
-              PROJET {(opportunity as any).kind === 'achat' ? 'ACHAT' : 'VENTE'}
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-bold text-xs">
+                PROJET {(opportunity as any).kind === 'achat' ? 'ACHAT' : 'VENTE'}
+              </Badge>
+              {estimate && (
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-bold text-xs">
+                  💰 {estimate} €
+                </Badge>
+              )}
             </div>
-            <h1 className="text-2xl font-bold text-foreground leading-tight">
+            <h1 className="text-2xl font-extrabold text-foreground tracking-tight pt-1">
               {formattedTitle}
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5 font-medium">
-              {opportunity.property_city || ((opportunity as any).communes ?? [])[0] || 'Brignoles'}
+            <p className="text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+              <span>📍 {opportunity.property_city || ((opportunity as any).communes ?? [])[0] || 'Brignoles'}</span>
             </p>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" aria-label="Options du projet">
+                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" aria-label="Options du projet">
                   <MoreHorizontal className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuContent align="end" className="w-56 rounded-xl">
                 <DropdownMenuItem onClick={duplicateOpportunity} disabled={duplicatingOpportunity} className="cursor-pointer">
                   {duplicatingOpportunity ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Copy className="mr-2 size-4 text-muted-foreground" />}
                   Dupliquer le projet
@@ -1595,45 +1632,129 @@ export default function OpportunityDetailPage() {
 
         <Separator />
 
-        {/* Stage Navigation Row */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              ÉTAPE
+        {/* Stepper Header Progress */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs font-bold">
+            <span className="text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+              <Rocket className="size-3.5 text-primary" />
+              Avancement du projet — Étape {stageIndex + 1} sur {STAGES.length}
             </span>
-            <span className="text-lg font-bold text-primary">
-              {currentStage}
+            <span className="text-primary font-extrabold text-xs">
+              {Math.round(progress)}%
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Stepper Progress Bar */}
+          <div className="h-2 w-full rounded-full bg-muted overflow-hidden border border-border/40">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 via-primary to-emerald-500 transition-all duration-500 rounded-full"
+              style={{ width: `${Math.round(progress)}%` }}
+            />
+          </div>
+
+          {/* Interactive Stepper Pipeline Nodes */}
+          <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-1.5 pt-1">
+            {STAGES.map((stg, idx) => {
+              const isCurrent = stg === currentStage
+              const isPassed = idx < stageIndex
+
+              return (
+                <button
+                  key={stg}
+                  type="button"
+                  onClick={() => updateStage(stg)}
+                  disabled={savingStage}
+                  title={`Passer à : ${stg}`}
+                  className={cn(
+                    "group relative flex flex-col items-center gap-1.5 p-2 rounded-xl border text-center transition-all duration-200 cursor-pointer",
+                    isCurrent
+                      ? "border-primary bg-primary/10 ring-2 ring-primary/30 shadow-2xs font-bold z-10 scale-[1.02]"
+                      : isPassed
+                      ? "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-foreground"
+                      : "border-border/60 bg-card/60 hover:bg-accent hover:border-border text-muted-foreground"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded-lg text-xs font-extrabold transition-transform group-hover:scale-110",
+                      isCurrent
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : isPassed
+                        ? "bg-emerald-500 text-white"
+                        : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {isPassed ? <CheckCircle2 className="size-3.5" /> : isCurrent ? <Sparkles className="size-3" /> : idx + 1}
+                  </div>
+                  <span className={cn("text-[10px] leading-tight truncate w-full", isCurrent ? "font-bold text-primary" : "font-medium text-muted-foreground group-hover:text-foreground")}>
+                    {stg}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Current Active Stage Box & Dropdown Selector */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-primary/30 bg-primary/5 p-3.5">
+          <div className="flex items-center gap-3">
+            {(() => {
+              const { icon: StageIcon, colorClass } = getStageTheme(currentStage)
+              return (
+                <div className={cn("flex size-10 items-center justify-center rounded-xl border text-base font-bold shrink-0", colorClass)}>
+                  <StageIcon className="size-5" />
+                </div>
+              )
+            })()}
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Étape actuelle :</span>
+                <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-bold text-xs">
+                  Étape {stageIndex + 1}/{STAGES.length}
+                </Badge>
+              </div>
+              <span className="text-base font-bold text-foreground">
+                {currentStage}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   disabled={savingStage}
-                  className="bg-primary hover:bg-primary/90 text-white font-semibold rounded-full px-5 h-9 text-sm shadow-xs"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-xl px-4 h-9 text-xs shadow-2xs"
                 >
                   {savingStage ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  ) : null}
+                    <Loader2 className="mr-1.5 size-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-1.5 size-4" />
+                  )}
                   Modifier l’étape
-                  <ChevronDown className="ml-2 size-4" />
+                  <ChevronDown className="ml-1.5 size-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {STAGES.map((stg) => (
-                  <DropdownMenuItem
-                    key={stg}
-                    onClick={() => updateStage(stg)}
-                    className={cn(
-                      "cursor-pointer font-medium text-sm flex items-center justify-between py-2",
-                      stg === currentStage && "bg-primary/10 font-bold text-primary"
-                    )}
-                  >
-                    <span>{stg}</span>
-                    {stg === currentStage && <CheckCircle2 className="size-4 text-primary" />}
-                  </DropdownMenuItem>
-                ))}
+              <DropdownMenuContent align="end" className="w-60 rounded-xl">
+                {STAGES.map((stg) => {
+                  const { icon: ItemIcon } = getStageTheme(stg)
+                  return (
+                    <DropdownMenuItem
+                      key={stg}
+                      onClick={() => updateStage(stg)}
+                      className={cn(
+                        "cursor-pointer font-medium text-xs flex items-center justify-between py-2 rounded-lg",
+                        stg === currentStage && "bg-primary/10 font-bold text-primary"
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <ItemIcon className="size-3.5 text-muted-foreground" />
+                        <span>{stg}</span>
+                      </div>
+                      {stg === currentStage && <CheckCircle2 className="size-4 text-primary" />}
+                    </DropdownMenuItem>
+                  )
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -1687,15 +1808,32 @@ export default function OpportunityDetailPage() {
                       ]
                       const avatarColor = colors[idx % colors.length]
 
+                      const contactHref = contact.id ? `/admin/market/contacts/${contact.id}` : null
+
                       return (
                         <div key={contact.id || idx} className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className={cn("size-9 shrink-0 flex items-center justify-center rounded-full text-xs font-bold shadow-xs", avatarColor)}>
-                              {initials}
-                            </div>
+                            {contactHref ? (
+                              <Link href={contactHref} className="shrink-0 group">
+                                <div className={cn("size-9 flex items-center justify-center rounded-full text-xs font-bold shadow-xs group-hover:opacity-85 transition-opacity", avatarColor)}>
+                                  {initials}
+                                </div>
+                              </Link>
+                            ) : (
+                              <div className={cn("size-9 shrink-0 flex items-center justify-center rounded-full text-xs font-bold shadow-xs", avatarColor)}>
+                                {initials}
+                              </div>
+                            )}
                             <div className="min-w-0">
                               <div className="text-sm font-bold text-foreground truncate">
-                                {name} <span className="text-xs font-normal italic text-muted-foreground">• {roleLabel}</span>
+                                {contactHref ? (
+                                  <Link href={contactHref} className="hover:underline hover:text-primary transition-colors">
+                                    {name}
+                                  </Link>
+                                ) : (
+                                  name
+                                )}{' '}
+                                <span className="text-xs font-normal italic text-muted-foreground">• {roleLabel}</span>
                               </div>
                               {contact.phone && (
                                 <a href={`tel:${contact.phone}`} className="text-xs text-muted-foreground hover:text-primary font-medium block truncate">

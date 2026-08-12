@@ -35,7 +35,143 @@ type LeadWithProspect = Lead & {
   prospect?: Pick<Prospect, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'> | null
 }
 
+export async function ensureClientDossierForOpportunity(opportunityId: string) {
+  const { data: opportunity, error: oppError } = await supabaseAdmin
+    .from('opportunities')
+    .select('*')
+    .eq('id', opportunityId)
+    .maybeSingle()
+
+  if (oppError) throw new Error(`Lecture projet impossible: ${oppError.message}`)
+  if (!opportunity) throw new Error('Projet introuvable')
+
+  let leadRecord: LeadWithProspect | null = null
+  let prospect: Pick<Prospect, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'> | null = null
+  let email: string | null = null
+
+  if (opportunity.lead_id) {
+    const { data: lead } = await supabaseAdmin
+      .from('leads')
+      .select(`
+        *,
+        prospect:prospects!leads_prospect_id_fkey (
+          id,
+          email,
+          first_name,
+          last_name,
+          phone
+        )
+      `)
+      .eq('id', opportunity.lead_id)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (lead) {
+      leadRecord = lead as LeadWithProspect
+      prospect = leadRecord.prospect ?? null
+      email = prospect?.email?.trim().toLowerCase() ?? null
+    }
+  }
+
+  if (!email) {
+    const { data: pcs } = await supabaseAdmin
+      .from('project_contacts')
+      .select('contact_id, role, contacts(*)')
+      .eq('opportunity_id', opportunityId)
+
+    const contactsList = (pcs ?? []).map((entry: any) => entry.contacts).filter(Boolean)
+    const attachedWithEmail = contactsList.find((c: any) => c.email?.trim())
+
+    if (attachedWithEmail) {
+      email = attachedWithEmail.email.trim().toLowerCase()
+      prospect = {
+        id: attachedWithEmail.id,
+        email,
+        first_name: attachedWithEmail.first_name ?? '',
+        last_name: attachedWithEmail.last_name ?? '',
+        phone: attachedWithEmail.phone ?? null,
+      }
+    } else if (contactsList.length > 0) {
+      throw new Error('Le contact rattaché à ce projet n’a pas d’adresse email renseignée')
+    } else {
+      throw new Error('Cette opportunité n’a pas de contact vendeur rattaché')
+    }
+  }
+
+  const sellerPropertyQuery = opportunity.lead_id
+    ? supabaseAdmin
+        .from('seller_properties')
+        .select('*')
+        .eq('lead_id', opportunity.lead_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : Promise.resolve({ data: null, error: null })
+
+  const sellerResult = await sellerPropertyQuery
+  if (sellerResult.error) throw new Error(`Lecture bien vendeur impossible: ${sellerResult.error.message}`)
+  const sellerProperty = sellerResult.data as SellerProperty | null
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('client_profiles')
+    .upsert({
+      email,
+      first_name: prospect?.first_name ?? '',
+      last_name: prospect?.last_name ?? '',
+      phone: prospect?.phone ?? null,
+      is_active: true,
+    } as never, { onConflict: 'email' })
+    .select('*')
+    .single()
+
+  if (profileError || !profile) throw new Error(`Préparation profil client impossible: ${profileError?.message}`)
+
+  const existing = await supabaseAdmin
+    .from('client_dossiers')
+    .select('*')
+    .or(`opportunity_id.eq.${opportunityId}${opportunity.lead_id ? `,lead_id.eq.${opportunity.lead_id}` : ''}`)
+    .maybeSingle()
+
+  if (existing.error) throw new Error(`Lecture dossier client impossible: ${existing.error.message}`)
+
+  const payload = {
+    client_profile_id: (profile as ClientProfile).id,
+    client_type: 'seller',
+    lead_id: opportunity.lead_id ?? null,
+    seller_property_id: sellerProperty?.id ?? null,
+    opportunity_id: opportunity.id,
+    status: 'active',
+    title: buildDossierTitle(leadRecord ?? ({ commune: opportunity.property_city } as any), sellerProperty, opportunity),
+    property_snapshot: buildPropertySnapshot(leadRecord ?? ({ form_data: {} } as any), sellerProperty, opportunity) as Json,
+    professional_opinion: buildProfessionalOpinion(opportunity) as Json,
+    advisor_note: 'Je garde ce dossier à jour pour vous donner une lecture claire de la vente et des prochaines étapes.',
+  }
+
+  const dossierResult = existing.data
+    ? await supabaseAdmin
+        .from('client_dossiers')
+        .update(payload as never)
+        .eq('id', (existing.data as ClientDossier).id)
+        .select('*')
+        .single()
+    : await supabaseAdmin
+        .from('client_dossiers')
+        .insert(payload as never)
+        .select('*')
+        .single()
+
+  if (dossierResult.error || !dossierResult.data) {
+    throw new Error(`Préparation dossier client impossible: ${dossierResult.error?.message}`)
+  }
+
+  return { profile: profile as ClientProfile, dossier: dossierResult.data as ClientDossier }
+}
+
 export async function ensureClientDossierForLead(leadId: string, opportunityId?: string) {
+  if (opportunityId) {
+    return ensureClientDossierForOpportunity(opportunityId)
+  }
+
   const { data: lead, error: leadError } = await supabaseAdmin
     .from('leads')
     .select(`

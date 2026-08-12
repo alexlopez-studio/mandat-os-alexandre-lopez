@@ -879,15 +879,32 @@ export default function BuyerProjectDetailPage() {
                         ]
                         const avatarColor = colors[idx % colors.length]
 
+                        const contactHref = c.id ? `/admin/market/contacts/${c.id}` : null
+
                         return (
                           <div key={c.id || idx} className="flex items-center justify-between gap-4">
                             <div className="flex items-center gap-4 min-w-0">
-                              <div className={cn('size-9 shrink-0 flex items-center justify-center rounded-full text-xs font-bold shadow-xs', avatarColor)}>
-                                {initials}
-                              </div>
+                              {contactHref ? (
+                                <Link href={contactHref} className="shrink-0 group">
+                                  <div className={cn('size-9 flex items-center justify-center rounded-full text-xs font-bold shadow-xs group-hover:opacity-85 transition-opacity', avatarColor)}>
+                                    {initials}
+                                  </div>
+                                </Link>
+                              ) : (
+                                <div className={cn('size-9 shrink-0 flex items-center justify-center rounded-full text-xs font-bold shadow-xs', avatarColor)}>
+                                  {initials}
+                                </div>
+                              )}
                               <div className="min-w-0">
                                 <div className="text-sm font-bold text-foreground truncate">
-                                  {name} <span className="text-xs font-normal italic text-muted-foreground">• {roleLabel}</span>
+                                  {contactHref ? (
+                                    <Link href={contactHref} className="hover:underline hover:text-primary transition-colors">
+                                      {name}
+                                    </Link>
+                                  ) : (
+                                    name
+                                  )}{' '}
+                                  <span className="text-xs font-normal italic text-muted-foreground">• {roleLabel}</span>
                                 </div>
                                 {c.phone && (
                                   <a href={`tel:${c.phone}`} className="text-xs text-muted-foreground hover:text-primary font-medium block truncate">

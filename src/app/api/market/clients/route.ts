@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ensureClientDossierForBuyer, ensureClientDossierForLead } from '@/lib/client-portal'
+import { ensureClientDossierForBuyer, ensureClientDossierForLead, ensureClientDossierForOpportunity } from '@/lib/client-portal'
 import { rejectIfNoAdmin, type AdminClientDossier } from '@/lib/market/client-admin'
 import { isPortalEligibleStage } from '@/lib/market/seller-stages'
 import { supabaseAdmin } from '@/lib/supabase'
@@ -105,11 +105,9 @@ export async function POST(req: NextRequest) {
       if (!isPortalEligibleStage(opportunity.stage)) {
         return NextResponse.json({ success: false, error: 'Le suivi client se crée à partir de la remise de l’estimation' }, { status: 409 })
       }
-      if (!opportunity.lead_id) {
-        return NextResponse.json({ success: false, error: 'Cette opportunité n’a pas de contact vendeur rattaché' }, { status: 409 })
-      }
-
-      const { dossier } = await ensureClientDossierForLead(opportunity.lead_id, opportunityId)
+      const { dossier } = opportunity.lead_id
+        ? await ensureClientDossierForLead(opportunity.lead_id, opportunityId)
+        : await ensureClientDossierForOpportunity(opportunityId)
       return NextResponse.json({ success: true, data: { id: dossier.id } })
     }
 

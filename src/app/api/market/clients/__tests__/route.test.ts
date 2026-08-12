@@ -8,11 +8,12 @@ vi.mock('@/lib/market/client-admin', () => ({
 vi.mock('@/lib/client-portal', () => ({
   ensureClientDossierForBuyer: vi.fn(),
   ensureClientDossierForLead: vi.fn(),
+  ensureClientDossierForOpportunity: vi.fn(),
 }))
 
 const mocks = vi.hoisted(() => ({
   opportunity: {
-    data: { id: 'opp-1', lead_id: 'lead-1', stage: 'Mandat signé' },
+    data: { id: 'opp-1', lead_id: 'lead-1' as string | null, stage: 'Mandat signé' },
     error: null as unknown,
   },
   buyer: {
@@ -37,11 +38,12 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
-import { ensureClientDossierForBuyer, ensureClientDossierForLead } from '@/lib/client-portal'
+import { ensureClientDossierForBuyer, ensureClientDossierForLead, ensureClientDossierForOpportunity } from '@/lib/client-portal'
 import { POST } from '../route'
 
 const mockedEnsureClientDossierForBuyer = vi.mocked(ensureClientDossierForBuyer)
 const mockedEnsureClientDossierForLead = vi.mocked(ensureClientDossierForLead)
+const mockedEnsureClientDossierForOpportunity = vi.mocked(ensureClientDossierForOpportunity)
 
 function makeRequest(body: unknown): NextRequest {
   return new Request('https://preview.alexlopez-provence.fr/api/market/clients', {
@@ -92,6 +94,7 @@ beforeEach(() => {
   mocks.opportunity = { data: { id: 'opp-1', lead_id: 'lead-1', stage: 'Mandat signé' }, error: null }
   mocks.buyer = { data: { lead_id: 'buyer-1', stage: 'Mandat de recherche signé' }, error: null }
   mockedEnsureClientDossierForLead.mockResolvedValue(dossier('seller-client-1'))
+  mockedEnsureClientDossierForOpportunity.mockResolvedValue(dossier('seller-client-1'))
   mockedEnsureClientDossierForBuyer.mockResolvedValue(dossier('buyer-client-1'))
 })
 
@@ -127,6 +130,18 @@ describe('POST /api/market/clients', () => {
     expect(json.success).toBe(true)
     expect(json.data.id).toBe('seller-client-1')
     expect(mockedEnsureClientDossierForLead).toHaveBeenCalledWith('lead-1', 'opp-1')
+  })
+
+  it('creates seller client follow-up when opportunity has no lead_id but attached contact', async () => {
+    mocks.opportunity = { data: { id: 'opp-no-lead', lead_id: null, stage: 'Mandat signé' }, error: null }
+
+    const res = await POST(makeRequest({ client_type: 'seller', opportunity_id: 'opp-no-lead' }))
+    const json = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(json.success).toBe(true)
+    expect(json.data.id).toBe('seller-client-1')
+    expect(mockedEnsureClientDossierForOpportunity).toHaveBeenCalledWith('opp-no-lead')
   })
 
   it('creates or attaches buyer client from signed search mandate', async () => {

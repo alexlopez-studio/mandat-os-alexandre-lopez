@@ -5,18 +5,34 @@ import {
   BarChart3,
   BookOpen,
   CalendarDays,
+  Camera,
   CheckCircle2,
+  ChevronDown,
+  Clock,
   Copy,
   Download,
+  ExternalLink,
   Eye,
+  FileCheck,
+  FileClock,
   FileText,
   FileUp,
+  FileX,
+  FolderUp,
+  Footprints,
+  Handshake,
+  Key,
   Loader2,
+  Pencil,
+  PenTool,
   Plus,
   Rocket,
   Send,
+  Sparkles,
   Trash2,
   Upload,
+  UploadCloud,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -95,7 +111,7 @@ const OFFER_STATUS_OPTIONS = [
 ]
 const OFFER_CONDITION_OPTIONS = ['Sans condition suspensive', 'Sous condition de prêt', 'Sous condition de vente', 'Sous condition urbanisme', 'Paiement comptant']
 const OFFER_STRENGTH_OPTIONS = ['À vérifier', 'Correct', 'Solide', 'Très solide']
-const DOCUMENT_CATEGORY_OPTIONS = ['Propriété', 'Identité', 'Diagnostics', 'Fiscalité', 'Urbanisme', 'Copropriété', 'Travaux', 'Assainissement', 'Mandat']
+const DOCUMENT_CATEGORY_OPTIONS = ['Propriété', 'Identité', 'Diagnostics', 'Fiscalité', 'Urbanisme', 'Copropriété', 'Travaux', 'Assainissement', 'Mandat', 'Autre']
 const REJECTION_REASON_OPTIONS = ['Illisible', 'Document incomplet', 'Document expiré', 'Mauvais document', 'Informations incohérentes', 'À rescanner']
 
 const ADMIN_INPUT_CLASS = 'h-10 rounded-xl px-3 text-sm'
@@ -121,6 +137,8 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
   const [tab, setTab] = useState('documents')
   const [mandateSignedAt, setMandateSignedAt] = useState<string | null>(null)
   const [savingMandateDate, setSavingMandateDate] = useState(false)
+  const [opportunityData, setOpportunityData] = useState<any>(null)
+  const [showDocForm, setShowDocForm] = useState(false)
 
   const fetchDetail = useCallback(async () => {
     const res = await fetch(`/api/market/clients/${dossierId}`)
@@ -133,6 +151,7 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
     setEvents(json.data.events ?? [])
     setEstimationPublished(Boolean(json.data.dossier?.professional_opinion?.client_portal_published))
     setMandateSignedAt(json.data.dossier?.mandate_signed_at ?? null)
+    setOpportunityData(json.data.opportunity ?? null)
   }, [dossierId])
 
   useEffect(() => {
@@ -140,17 +159,45 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
     fetchDetail().finally(() => setLoading(false))
   }, [fetchDetail])
 
-  async function addDocument() {
-    if (!newDoc.label.trim()) return
-    const res = await fetch(`/api/market/clients/${dossierId}/documents`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newDoc),
-    })
-    const json = await res.json()
-    if (!res.ok || !json.success) return toast.error(json.error ?? 'Ajout impossible')
-    setNewDoc({ label: '', category: 'Autre' })
-    await fetchDetail()
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [submittingDoc, setSubmittingDoc] = useState(false)
+
+  async function handleAddDocument() {
+    if (!newDoc.label.trim() && !selectedFile) {
+      toast.error('Veuillez indiquer le nom de la pièce ou joindre un fichier')
+      return
+    }
+
+    const label = newDoc.label.trim() || selectedFile?.name || 'Document'
+    setSubmittingDoc(true)
+    try {
+      if (selectedFile) {
+        const body = new FormData()
+        body.set('label', label)
+        body.set('category', newDoc.category)
+        body.set('file', selectedFile)
+        const res = await fetch(`/api/market/clients/${dossierId}/documents/upload`, { method: 'POST', body })
+        const json = await res.json()
+        if (!res.ok || !json.success) throw new Error(json.error ?? 'Upload impossible')
+        toast.success('Document et fichier ajoutés')
+      } else {
+        const res = await fetch(`/api/market/clients/${dossierId}/documents`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ label, category: newDoc.category }),
+        })
+        const json = await res.json()
+        if (!res.ok || !json.success) throw new Error(json.error ?? 'Ajout impossible')
+        toast.success('Demande de pièce ajoutée pour le vendeur')
+      }
+      setNewDoc({ label: '', category: 'Autre' })
+      setSelectedFile(null)
+      await fetchDetail()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Ajout impossible')
+    } finally {
+      setSubmittingDoc(false)
+    }
   }
 
   async function updateDocument(documentId: string, patch: Record<string, unknown>) {
@@ -192,25 +239,73 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
     }
   }
 
-  async function addEvent(type: string) {
-    if (!newEvent.title.trim()) return
-    const res = await fetch(`/api/market/clients/${dossierId}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: newEvent.title,
-        description: newEvent.description,
-        type,
-        status: normalizedEventStatus(type, newEvent.status),
-        event_date: newEvent.event_date,
-        visible_to_client: newEvent.visible_to_client,
-        payload: normalizeEventPayload(newEvent),
-      }),
+  const [submittingEvent, setSubmittingEvent] = useState(false)
+  const [editingEventId, setEditingEventId] = useState<string | null>(null)
+
+  function startEditingEvent(event: ClientEvent) {
+    const payload = asRecord(event.payload)
+    setEditingEventId(event.id)
+    setNewEvent({
+      title: event.title,
+      description: event.description ?? '',
+      status: event.status,
+      event_date: event.event_date ?? '',
+      visible_to_client: event.visible_to_client,
+      milestone_kind: stringify(payload.milestone_kind) || event.title,
+      buyer_name: stringify(payload.buyer_name) || event.title,
+      amount: stringify(payload.amount),
+      rating: stringify(payload.rating),
+      buyer_profile: stringify(payload.buyer_profile),
+      financing: stringify(payload.financing),
+      offer_condition: stringify(payload.offer_condition),
+      offer_strength: stringify(payload.offer_strength),
     })
-    const json = await res.json()
-    if (!res.ok || !json.success) return toast.error(json.error ?? 'Ajout impossible')
+  }
+
+  function cancelEditingEvent() {
+    setEditingEventId(null)
     setNewEvent(emptyEventDraft())
-    await fetchDetail()
+  }
+
+  async function addEvent(type: string) {
+    const effectiveTitle = newEvent.title.trim() || newEvent.buyer_name.trim() || (type === 'visit' ? 'Visite' : type === 'offer' ? 'Offre d’achat' : '')
+    if (!effectiveTitle) {
+      toast.error('Veuillez indiquer le nom des visiteurs ou un intitulé')
+      return
+    }
+
+    setSubmittingEvent(true)
+    try {
+      const isEditing = Boolean(editingEventId)
+      const res = await fetch(`/api/market/clients/${dossierId}/events`, {
+        method: isEditing ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(isEditing ? { id: editingEventId } : {}),
+          title: effectiveTitle,
+          description: newEvent.description,
+          type,
+          status: normalizedEventStatus(type, newEvent.status),
+          event_date: newEvent.event_date || new Date().toISOString().split('T')[0],
+          visible_to_client: newEvent.visible_to_client,
+          payload: normalizeEventPayload({ ...newEvent, title: effectiveTitle, buyer_name: newEvent.buyer_name || effectiveTitle }),
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.error ?? (isEditing ? 'Modification impossible' : 'Ajout impossible'))
+      setEditingEventId(null)
+      setNewEvent(emptyEventDraft())
+      await fetchDetail()
+      toast.success(
+        isEditing
+          ? (type === 'visit' ? 'Visite modifiée' : type === 'offer' ? 'Offre modifiée' : 'Étape modifiée')
+          : (type === 'visit' ? 'Visite enregistrée' : type === 'offer' ? 'Offre ajoutée' : 'Étape ajoutée')
+      )
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Action impossible')
+    } finally {
+      setSubmittingEvent(false)
+    }
   }
 
   async function updateEvent(eventId: string, patch: Record<string, unknown>) {
@@ -326,113 +421,242 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
   const validatedDocuments = documents.filter((document) => document.status === 'validated').length
   const visibleEvents = events.filter((event) => event.visible_to_client).length
 
+  const isEstimationDone = Boolean(
+    estimationPublished ||
+    opportunityData?.estimated_price_min ||
+    opportunityData?.estimated_price_max ||
+    (opportunityData?.professional_opinion && Object.keys(opportunityData.professional_opinion).length > 0)
+  )
+
   return (
     <Tabs value={tab} onValueChange={setTab} className="space-y-6">
-      <section className="flex flex-col gap-3 rounded-2xl border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Suivi client</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">Estimation, documents, plan de vente, visites et offres — administrés ici, visualisés côté client.</p>
-          <Badge variant="outline" className={clientAccessSent ? 'mt-2 border-emerald-200 bg-emerald-50 text-emerald-700' : 'mt-2 border-amber-200 bg-amber-50 text-amber-700'}>
-            {clientAccessSent ? 'Accès envoyé' : 'Accès à envoyer'}
-          </Badge>
-          <Badge variant="outline" className={estimationPublished ? 'mt-2 ml-2 border-emerald-200 bg-emerald-50 text-emerald-700' : 'mt-2 ml-2 border-slate-200 bg-slate-50 text-slate-600'}>
-            {estimationPublished ? 'Estimation publiée' : 'Estimation non publiée'}
-          </Badge>
+      {/* Header section: Suivi Client */}
+      <section className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-bold text-foreground">Suivi client</h2>
+            {isEstimationDone ? (
+              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-semibold gap-1 px-2.5 py-0.5 text-xs">
+                <CheckCircle2 className="size-3.5 text-emerald-600" /> Estimation réalisée
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 font-semibold gap-1 px-2.5 py-0.5 text-xs">
+                <Clock className="size-3.5 text-amber-600" /> Estimation en attente
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs font-medium text-muted-foreground">
+            Espace dédié au vendeur pour consulter l’estimation, le plan de vente et suivre l’avancement.
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={publishEstimation} disabled={publishingEstimation || estimationPublished}>
-            {publishingEstimation ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Rocket className="mr-1 size-4" />}
-            Publier l’estimation
-          </Button>
-          <Button variant="outline" size="sm" onClick={inviteClient} disabled={inviting}>
-            {inviting ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Send className="mr-1 size-4" />}
-            Donner accès au client
-          </Button>
-          <Button variant="outline" size="sm" onClick={copyClientPortalUrl} disabled={copyingClientLink}>
-            {copyingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Copy className="mr-1 size-4" />}
+
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <Button variant="default" size="sm" onClick={copyClientPortalUrl} disabled={copyingClientLink} className="h-9 font-semibold rounded-xl">
+            {copyingClientLink ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Copy className="mr-1.5 size-4" />}
             Copier le lien client
           </Button>
-          <Button variant="outline" size="sm" onClick={openClientPortalLink} disabled={openingClientLink}>
-            {openingClientLink ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Eye className="mr-1 size-4" />}
-            Prévisualiser l’espace client
+          <Button variant="outline" size="sm" onClick={openClientPortalLink} disabled={openingClientLink} className="h-9 font-semibold rounded-xl">
+            {openingClientLink ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <ExternalLink className="mr-1.5 size-4" />}
+            Accéder à l’espace client
           </Button>
         </div>
       </section>
 
-      <PersonalizationCard dossierId={dossierId} />
-
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <PortalKpi icon={FileText} label="Documents validés" value={`${validatedDocuments}/${documents.length}`} helper={missingDocuments > 0 ? `${missingDocuments} à traiter` : 'Dossier à jour'} />
-        <PortalKpi icon={BookOpen} label="Plan publié" value={String(planEvents.length)} helper={`${visibleEvents} élément(s) visibles client`} />
-        <PortalKpi icon={CalendarDays} label="Visites" value={String(visitEvents.length)} helper={visitEvents.some((event) => event.status === 'planned') ? 'Visite programmée' : 'Historique visites'} />
-        <PortalKpi icon={CheckCircle2} label="Offres" value={String(offerEvents.length)} helper={offerEvents.some((event) => ['new', 'pending', 'counter'].includes(event.status)) ? 'À suivre' : 'Suivi commercial'} />
-      </section>
-
-      <section className="rounded-2xl border bg-white p-4 shadow-sm">
-        <label className="block text-sm font-semibold text-foreground mb-2">Date de signature du mandat</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={mandateSignedAt && typeof mandateSignedAt === "string" ? new Date(mandateSignedAt).toISOString().split("T")[0] : ""}
-            onChange={(e) => updateMandateSignedAt(e.target.value ? new Date(e.target.value).toISOString() : null)}
-            disabled={savingMandateDate}
-            className={ADMIN_INPUT_CLASS}
-          />
-          {savingMandateDate && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-          {mandateSignedAt && typeof mandateSignedAt === "string" && <span className="text-xs text-muted-foreground">{new Date(mandateSignedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</span>}
-        </div>
-      </section>
-
-      <TabsList className="flex h-auto flex-wrap justify-start rounded-2xl border bg-white p-1 shadow-sm">
-        <WorkspaceTab value="documents" icon={FileText} label="Documents" />
-        <WorkspaceTab value="plan" icon={BookOpen} label="Plan de vente" />
-        <WorkspaceTab value="visites" icon={CalendarDays} label="Visites" />
-        <WorkspaceTab value="offres" icon={CheckCircle2} label="Offres" />
+      {/* Menubar d'onglets secondaires */}
+      <TabsList variant="pill" className="w-full justify-start border bg-card p-1.5 shadow-xs rounded-2xl gap-1 overflow-x-auto">
+        <WorkspaceTab value="documents" icon={FileText} label="Documents" count={`${validatedDocuments}/${documents.length}`} />
+        <WorkspaceTab value="plan" icon={BookOpen} label="Plan de vente" count={planEvents.length} />
+        <WorkspaceTab value="visites" icon={CalendarDays} label="Visites" count={visitEvents.length} />
+        <WorkspaceTab value="offres" icon={CheckCircle2} label="Offres" count={offerEvents.length} />
         {opportunityId && <WorkspaceTab value="diffusion" icon={BarChart3} label="Diffusion & statistiques" />}
       </TabsList>
 
       <TabsContent value="documents" className="space-y-6">
-        <Section title="Ajouter une pièce demandée" icon={FileText}>
-          <div className="grid gap-3 md:grid-cols-[1fr_180px_auto]">
-            <Input value={newDoc.label} onChange={(event) => setNewDoc({ ...newDoc, label: event.target.value })} placeholder="Ex. Diagnostic amiante" className={ADMIN_INPUT_CLASS} />
-            <SelectWithOther label="Catégorie" value={newDoc.category} options={DOCUMENT_CATEGORY_OPTIONS} onChange={(value) => setNewDoc({ ...newDoc, category: value })} compact />
-            <Button onClick={addDocument} className={ADMIN_PRIMARY_ACTION_CLASS}><Plus className="mr-2 size-4" /> Ajouter</Button>
-          </div>
-        </Section>
-        <Section title="Checklist et fichiers vendeur" icon={FileText}>
-          <div className="space-y-3">
-            {documents.map((document) => (
-              <DocumentRow
-                key={document.id}
-                document={document}
-                uploadingId={uploadingId}
-                onUpdate={updateDocument}
-                onDelete={deleteDocument}
-                onUpload={uploadDocument}
-              />
-            ))}
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed bg-white p-5 text-sm font-semibold text-primary hover:bg-accent/50">
-              {uploadingId === 'new' ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
-              Ajouter un fichier libre
-              <input type="file" className="sr-only" onChange={(event) => uploadDocument(null, event.target.files?.[0] ?? null)} />
-            </label>
+        <Section
+          title="Documents du dossier"
+          subtitle="Centralisez les pièces justificatives et les demandes de documents envoyées au vendeur."
+          icon={FileText}
+          action={
+            <Button
+              size="sm"
+              onClick={() => setShowDocForm(!showDocForm)}
+              className="h-10 font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs px-4 text-xs shrink-0"
+            >
+              {showDocForm ? <X className="mr-1.5 size-4" /> : <Plus className="mr-1.5 size-4" />}
+              {showDocForm ? 'Fermer' : 'Demander une pièce'}
+            </Button>
+          }
+        >
+          {/* Top Form: Add document or upload file */}
+          {showDocForm && (
+            <div className="rounded-2xl border border-primary/30 bg-muted/40 p-5 space-y-4 shadow-2xs">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-primary" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                    Ajouter une pièce ou une demande
+                  </h3>
+                </div>
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  Sans fichier = demande envoyée au vendeur sur son portail client
+                </span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+                {/* Libellé */}
+                <div className="lg:col-span-4">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    Nom / Libellé de la pièce
+                  </label>
+                  <Input
+                    value={newDoc.label}
+                    onChange={(event) => setNewDoc({ ...newDoc, label: event.target.value })}
+                    placeholder="Ex. Taxe foncière, Diagnostic DPE, Titre de propriété..."
+                    className={ADMIN_INPUT_CLASS}
+                  />
+                </div>
+
+                {/* Catégorie */}
+                <div className="lg:col-span-3">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    Catégorie
+                  </label>
+                  <SelectWithOther
+                    label="Catégorie"
+                    value={newDoc.category}
+                    options={DOCUMENT_CATEGORY_OPTIONS}
+                    onChange={(value) => setNewDoc({ ...newDoc, category: value })}
+                    compact
+                  />
+                </div>
+
+                {/* Fichier joint */}
+                <div className="lg:col-span-3">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    Fichier (optionnel)
+                  </label>
+                  {selectedFile ? (
+                    <div className="flex h-10 items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-600">
+                      <span className="truncate max-w-[140px]">{selectedFile.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFile(null)}
+                        className="hover:text-emerald-800 p-0.5 rounded-md"
+                        title="Retirer le fichier"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex h-10 cursor-pointer items-center justify-center gap-1.5 rounded-xl border bg-card px-3 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                      <UploadCloud className="size-4 shrink-0 text-primary" />
+                      <span className="truncate">Joindre un fichier</span>
+                      <input
+                        type="file"
+                        className="sr-only"
+                        onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Submit Button */}
+                <div className="lg:col-span-2">
+                  <Button
+                    onClick={handleAddDocument}
+                    disabled={submittingDoc}
+                    className="w-full h-10 font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs"
+                  >
+                    {submittingDoc ? (
+                      <Loader2 className="mr-1.5 size-4 animate-spin" />
+                    ) : (
+                      <Plus className="mr-1.5 size-4" />
+                    )}
+                    Ajouter
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Document list below */}
+          <div className="mt-5 space-y-3">
+            {documents.length > 0 ? (
+              documents.map((document) => (
+                <DocumentRow
+                  key={document.id}
+                  document={document}
+                  uploadingId={uploadingId}
+                  onUpdate={updateDocument}
+                  onDelete={deleteDocument}
+                  onUpload={uploadDocument}
+                />
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 p-8 text-center bg-card/40 space-y-2">
+                <FolderUp className="size-9 text-muted-foreground/50 mb-1" />
+                <p className="text-sm font-bold text-foreground">Aucun document dans ce dossier</p>
+                <p className="text-xs text-muted-foreground max-w-sm">
+                  Utilisez le formulaire ci-dessus pour demander une pièce au vendeur ou ajouter directement un document.
+                </p>
+              </div>
+            )}
           </div>
         </Section>
       </TabsContent>
 
       <TabsContent value="plan" className="space-y-6">
-        <EventEditor title="Ajouter une étape au plan de vente" type="milestone" onAdd={addEvent} newEvent={newEvent} setNewEvent={setNewEvent} />
-        <EventList title="Plan de vente publié" events={planEvents} onUpdate={updateEvent} onDelete={deleteEvent} />
+        <UnifiedEventWorkspace
+          title="Plan de vente"
+          type="milestone"
+          icon={BookOpen}
+          events={planEvents}
+          newEvent={newEvent}
+          setNewEvent={setNewEvent}
+          submitting={submittingEvent}
+          editingEventId={editingEventId}
+          onAdd={addEvent}
+          onEdit={startEditingEvent}
+          onCancelEdit={cancelEditingEvent}
+          onUpdate={updateEvent}
+          onDelete={deleteEvent}
+        />
       </TabsContent>
 
       <TabsContent value="visites" className="space-y-6">
-        <EventEditor title="Ajouter une visite physique" type="visit" onAdd={addEvent} newEvent={newEvent} setNewEvent={setNewEvent} />
-        <EventList title="Comptes-rendus de visites" events={visitEvents} onUpdate={updateEvent} onDelete={deleteEvent} />
+        <UnifiedEventWorkspace
+          title="Visites et comptes-rendus"
+          type="visit"
+          icon={CalendarDays}
+          events={visitEvents}
+          newEvent={newEvent}
+          setNewEvent={setNewEvent}
+          submitting={submittingEvent}
+          editingEventId={editingEventId}
+          onAdd={addEvent}
+          onEdit={startEditingEvent}
+          onCancelEdit={cancelEditingEvent}
+          onUpdate={updateEvent}
+          onDelete={deleteEvent}
+        />
       </TabsContent>
 
       <TabsContent value="offres" className="space-y-6">
-        <EventEditor title="Ajouter une offre d'achat" type="offer" onAdd={addEvent} newEvent={newEvent} setNewEvent={setNewEvent} />
-        <EventList title="Offres transmises" events={offerEvents} onUpdate={updateEvent} onDelete={deleteEvent} />
+        <UnifiedEventWorkspace
+          title="Offres d'achat"
+          type="offer"
+          icon={CheckCircle2}
+          events={offerEvents}
+          newEvent={newEvent}
+          setNewEvent={setNewEvent}
+          submitting={submittingEvent}
+          editingEventId={editingEventId}
+          onAdd={addEvent}
+          onEdit={startEditingEvent}
+          onCancelEdit={cancelEditingEvent}
+          onUpdate={updateEvent}
+          onDelete={deleteEvent}
+        />
       </TabsContent>
       {opportunityId && (
         <TabsContent value="diffusion" className="space-y-6">
@@ -455,33 +679,71 @@ function PortalKpi({
   helper: string
 }) {
   return (
-    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border bg-card p-4 shadow-xs">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-extrabold uppercase text-muted-foreground">{label}</span>
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</span>
         <Icon className="size-4 text-primary" />
       </div>
-      <p className="mt-2 text-2xl font-extrabold leading-none text-foreground">{value}</p>
-      <p className="mt-1 text-xs font-semibold text-muted-foreground">{helper}</p>
+      <p className="mt-2 text-2xl font-bold leading-none text-foreground">{value}</p>
+      <p className="mt-1 text-xs font-medium text-muted-foreground">{helper}</p>
     </div>
   )
 }
 
-function WorkspaceTab({ value, icon: Icon, label }: { value: string; icon: typeof FileText; label: string }) {
+function WorkspaceTab({
+  value,
+  icon: Icon,
+  label,
+  count,
+}: {
+  value: string
+  icon: typeof FileText
+  label: string
+  count?: string | number
+}) {
   return (
-    <TabsTrigger value={value} className="gap-2 rounded-xl px-4 py-2 data-[state=active]:bg-primary data-[state=active]:text-white">
-      <Icon className="size-4" />
-      {label}
+    <TabsTrigger
+      value={value}
+      className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-xs hover:text-foreground"
+    >
+      <Icon className="size-4 shrink-0" />
+      <span>{label}</span>
+      {count !== undefined && (
+        <span className="ml-1 rounded-full bg-muted-foreground/15 px-2 py-0.5 text-[10px] font-bold">
+          {count}
+        </span>
+      )}
     </TabsTrigger>
   )
 }
 
-function Section({ title, icon: Icon, children }: { title: string; icon: typeof FileText; children: React.ReactNode }) {
+function Section({
+  title,
+  subtitle,
+  icon: Icon,
+  action,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  icon: typeof FileText
+  action?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
-    <section className="rounded-3xl border bg-white p-6 shadow-sm">
-      <h2 className="mb-5 flex items-center gap-2 border-b pb-4 text-lg font-extrabold text-foreground">
-        <Icon className="size-4 text-primary" />
-        {title}
-      </h2>
+    <section className="rounded-2xl border bg-card p-6 shadow-2xs space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border/40 pb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Icon className="size-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-foreground">{title}</h2>
+            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          </div>
+        </div>
+        {action && <div>{action}</div>}
+      </div>
       {children}
     </section>
   )
@@ -517,28 +779,40 @@ function SelectWithOther({
   onChange: (value: string) => void
   compact?: boolean
 }) {
-  const isPreset = !value || options.includes(value)
-  const selectValue = isPreset ? value : '__other__'
+  const hasAutreInOptions = options.some((opt) => opt.toLowerCase() === 'autre')
+  const baseOptions = hasAutreInOptions ? options.filter((opt) => opt.toLowerCase() !== 'autre') : options
+
+  const isStandardPreset = !value || baseOptions.includes(value) || value === 'Autre'
+  const selectValue = isStandardPreset ? (value || '') : '__custom__'
 
   return (
     <label className={`block ${compact ? 'space-y-0' : 'space-y-1'}`}>
-      {!compact && <span className="text-xs font-extrabold uppercase text-slate-500">{label}</span>}
+      {!compact && <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{label}</span>}
       <select
         value={selectValue}
-        onChange={(event) => onChange(event.target.value === '__other__' ? 'Autre' : event.target.value)}
+        onChange={(event) => {
+          const selected = event.target.value
+          if (selected === '__custom__') {
+            onChange('Autre')
+          } else {
+            onChange(selected)
+          }
+        }}
         className={ADMIN_SELECT_CLASS}
         aria-label={compact ? label : undefined}
       >
         <option value="">Sélectionner</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-        <option value="__other__">Autre</option>
+        {baseOptions.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+        <option value="Autre">Autre</option>
       </select>
-      {(!isPreset || selectValue === '__other__') && (
+      {selectValue === '__custom__' && (
         <Input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          value={value === 'Autre' ? '' : value}
+          onChange={(event) => onChange(event.target.value || 'Autre')}
           placeholder={`${label} personnalisé`}
-          className={cn('mt-2', ADMIN_INPUT_CLASS)}
+          className={cn('mt-1.5', ADMIN_INPUT_CLASS)}
         />
       )}
     </label>
@@ -574,39 +848,118 @@ function DocumentRow({
   onDelete: (documentId: string) => void
   onUpload: (document: ClientDocument | null, file: File | null) => void
 }) {
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'validated':
+        return (
+          <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-semibold gap-1.5 px-2.5 py-0.5 text-xs">
+            <FileCheck className="size-3.5 text-emerald-600" /> Validé
+          </Badge>
+        )
+      case 'uploaded':
+        return (
+          <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-600 font-semibold gap-1.5 px-2.5 py-0.5 text-xs">
+            <UploadCloud className="size-3.5 text-sky-600" /> Reçu du client
+          </Badge>
+        )
+      case 'rejected':
+        return (
+          <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive font-semibold gap-1.5 px-2.5 py-0.5 text-xs">
+            <FileX className="size-3.5 text-destructive" /> Rejeté
+          </Badge>
+        )
+      default:
+        return (
+          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 font-semibold gap-1.5 px-2.5 py-0.5 text-xs">
+            <FileClock className="size-3.5 text-amber-600" /> En attente vendeur
+          </Badge>
+        )
+    }
+  }
+
   return (
-    <div className="grid gap-3 rounded-2xl border bg-background p-4 lg:grid-cols-[1fr_180px_160px_auto] lg:items-center">
-      <div className="min-w-0">
-        <div className="font-semibold text-foreground">{document.label}</div>
-        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span>{document.category}</span>
-          {document.file_name && <span>{document.file_name}</span>}
-          {document.validated_at && <span>Validé le {formatDate(document.validated_at)}</span>}
+    <div className="rounded-2xl border bg-card p-4 shadow-2xs transition-all hover:border-border/80 space-y-3 lg:space-y-0 lg:grid lg:grid-cols-[1fr_180px_160px_auto] lg:items-center lg:gap-4">
+      {/* Left Col: Label, Status badge, File details */}
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-bold text-sm text-foreground">{document.label}</span>
+          {getStatusBadge(document.status)}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground font-medium">
+          <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+            {document.category}
+          </span>
+          {document.file_name && (
+            <span className="truncate max-w-[200px] text-foreground/80 font-medium">
+              📎 {document.file_name}
+            </span>
+          )}
+          {document.validated_at && (
+            <span>Validé le {formatDate(document.validated_at)}</span>
+          )}
         </div>
         {document.status === 'rejected' && document.notes && (
-          <p className="mt-2 text-xs font-semibold text-red-600">Motif : {document.notes}</p>
+          <p className="mt-1 text-xs font-semibold text-destructive">Motif de rejet : {document.notes}</p>
         )}
       </div>
-      <SelectWithOther label="Catégorie" value={document.category} options={DOCUMENT_CATEGORY_OPTIONS} onChange={(value) => onUpdate(document.id, { category: value })} compact />
+
+      {/* Category selector */}
+      <SelectWithOther
+        label="Catégorie"
+        value={document.category}
+        options={DOCUMENT_CATEGORY_OPTIONS}
+        onChange={(value) => onUpdate(document.id, { category: value })}
+        compact
+      />
+
+      {/* Status dropdown */}
       <SelectValue
         value={document.status}
         options={Object.entries(DOCUMENT_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
         onChange={(value) => onUpdate(document.id, { status: value })}
       />
-      <div className="flex flex-wrap justify-end gap-2">
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         {document.signed_url && (
-          <Button asChild variant="outline" size="sm" className={ADMIN_SECONDARY_ACTION_CLASS}><a href={document.signed_url} target="_blank" rel="noreferrer"><Download className="mr-1 size-4" /> Ouvrir</a></Button>
+          <Button asChild variant="outline" size="sm" className="h-8 text-xs font-semibold rounded-lg px-2.5">
+            <a href={document.signed_url} target="_blank" rel="noreferrer">
+              <Download className="mr-1 size-3.5" /> Ouvrir
+            </a>
+          </Button>
         )}
-        <label className={cn('inline-flex cursor-pointer items-center border text-sm font-semibold hover:bg-accent', ADMIN_SECONDARY_ACTION_CLASS)}>
-          {uploadingId === document.id ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Upload className="mr-1 size-4" />}
-          Upload
+        <label className="inline-flex h-8 cursor-pointer items-center rounded-lg border bg-card px-2.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors">
+          {uploadingId === document.id ? (
+            <Loader2 className="mr-1 size-3.5 animate-spin" />
+          ) : (
+            <Upload className="mr-1 size-3.5 text-muted-foreground" />
+          )}
+          <span className="ml-1">{document.file_name ? 'Remplacer' : 'Fichier'}</span>
           <input type="file" className="sr-only" onChange={(event) => onUpload(document, event.target.files?.[0] ?? null)} />
         </label>
-        <Button variant="outline" size="sm" className={ADMIN_SECONDARY_ACTION_CLASS} onClick={() => onUpdate(document.id, { status: 'validated' })}><CheckCircle2 className="mr-1 size-4" /> Valider</Button>
-        <Button variant="ghost" size="icon-sm" className={ADMIN_ICON_ACTION_CLASS} onClick={() => onDelete(document.id)}><Trash2 className="size-4" /></Button>
+        {document.status !== 'validated' && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs font-semibold rounded-lg px-2.5 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+            onClick={() => onUpdate(document.id, { status: 'validated' })}
+          >
+            <CheckCircle2 className="mr-1 size-3.5 text-emerald-600" /> Valider
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-lg"
+          onClick={() => onDelete(document.id)}
+          title="Supprimer la pièce"
+        >
+          <Trash2 className="size-4" />
+        </Button>
       </div>
+
       {document.status === 'rejected' && (
-        <div className="lg:col-span-4">
+        <div className="lg:col-span-4 pt-2 border-t border-border/40">
           <SelectWithOther label="Motif de rejet" value={document.notes ?? ''} options={REJECTION_REASON_OPTIONS} onChange={(value) => onUpdate(document.id, { notes: value })} />
         </div>
       )}
@@ -614,107 +967,573 @@ function DocumentRow({
   )
 }
 
-function EventEditor({
-  title,
-  type,
-  newEvent,
-  setNewEvent,
-  onAdd,
-}: {
-  title: string
-  type: string
-  newEvent: ReturnType<typeof emptyEventDraft>
-  setNewEvent: (event: ReturnType<typeof emptyEventDraft>) => void
-  onAdd: (type: string) => void
-}) {
-  const statusOptions = type === 'visit' ? VISIT_STATUS_OPTIONS : type === 'offer' ? OFFER_STATUS_OPTIONS : EVENT_STATUS_OPTIONS
-  const currentStatus = statusOptions.some((option) => option.value === newEvent.status) ? newEvent.status : statusOptions[0]?.value ?? newEvent.status
+function getMilestoneIcon(title: string) {
+  const t = title.toLowerCase()
+  if (t.includes('estimation') || t.includes('avis')) return { icon: BarChart3, colorClass: 'text-purple-600 border-purple-500/30 bg-purple-500/10' }
+  if (t.includes('mandat') || t.includes('signature')) return { icon: PenTool, colorClass: 'text-indigo-600 border-indigo-500/30 bg-indigo-500/10' }
+  if (t.includes('photo') || t.includes('shooting')) return { icon: Camera, colorClass: 'text-pink-600 border-pink-500/30 bg-pink-500/10' }
+  if (t.includes('virtuelle') || t.includes('3d')) return { icon: Eye, colorClass: 'text-cyan-600 border-cyan-500/30 bg-cyan-500/10' }
+  if (t.includes('diffusion') || t.includes('annonce') || t.includes('mise en ligne')) return { icon: Rocket, colorClass: 'text-sky-600 border-sky-500/30 bg-sky-500/10' }
+  if (t.includes('visite')) return { icon: Footprints, colorClass: 'text-amber-600 border-amber-500/30 bg-amber-500/10' }
+  if (t.includes('offre')) return { icon: Handshake, colorClass: 'text-emerald-600 border-emerald-500/30 bg-emerald-500/10' }
+  if (t.includes('compromis') || t.includes('promesse')) return { icon: FileCheck, colorClass: 'text-teal-600 border-teal-500/30 bg-teal-500/10' }
+  if (t.includes('acte') || t.includes('clé') || t.includes('cles') || t.includes('authentique')) return { icon: Key, colorClass: 'text-amber-500 border-amber-500/30 bg-amber-500/10' }
+  return { icon: Sparkles, colorClass: 'text-primary border-primary/30 bg-primary/10' }
+}
+
+function EventPayloadDetails({ payload }: { payload: Json }) {
+  const p = asRecord(payload)
+  const rating = nullableNumber(stringify(p.rating))
+  const profile = stringify(p.buyer_profile)
+  const financing = stringify(p.financing)
+  const amount = nullableNumber(stringify(p.amount))
+  const condition = stringify(p.offer_condition)
+  const strength = stringify(p.offer_strength)
+
+  if (!rating && !profile && !financing && !amount && !condition && !strength) {
+    return null
+  }
+
   return (
-    <Section title={title} icon={CalendarDays}>
-      <div className="grid gap-3 md:grid-cols-[1fr_160px_160px]">
-        <Input value={newEvent.title} onChange={(event) => setNewEvent({ ...newEvent, title: event.target.value })} placeholder="Titre" className={ADMIN_INPUT_CLASS} />
-        <Input type="date" value={newEvent.event_date} onChange={(event) => setNewEvent({ ...newEvent, event_date: event.target.value })} className={ADMIN_INPUT_CLASS} />
-        <SelectValue value={currentStatus} options={statusOptions} onChange={(value) => setNewEvent({ ...newEvent, status: value })} />
-      </div>
-      {type === 'milestone' && (
-        <div className="mt-3">
-          <SelectWithOther label="Type d'étape" value={newEvent.milestone_kind} options={MILESTONE_TYPE_OPTIONS} onChange={(value) => setNewEvent({ ...newEvent, milestone_kind: value })} />
+    <div className="flex flex-wrap items-center gap-2 pt-1">
+      {rating != null && rating >= 1 && (
+        <div className="inline-flex items-center gap-1 rounded-xl border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-bold text-amber-600 shadow-2xs">
+          <div className="flex items-center gap-0.5 text-amber-500">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <span key={star} className={star <= rating ? "text-amber-500" : "text-amber-500/25"}>
+                ★
+              </span>
+            ))}
+          </div>
+          <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">({rating}/5)</span>
         </div>
       )}
-      <Textarea className={cn('mt-3', ADMIN_TEXTAREA_CLASS)} value={newEvent.description} onChange={(event) => setNewEvent({ ...newEvent, description: event.target.value })} placeholder="Description visible client" rows={3} />
-      {type !== 'milestone' && (
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <Field label="Acheteur / visiteur" value={newEvent.buyer_name} onChange={(value) => setNewEvent({ ...newEvent, buyer_name: value })} />
-          {type === 'offer' && <Field label="Montant offre" value={newEvent.amount} onChange={(value) => setNewEvent({ ...newEvent, amount: value })} />}
-          {type === 'visit' && <SelectWithOther label="Intérêt visite" value={newEvent.rating} options={['1', '2', '3', '4', '5']} onChange={(value) => setNewEvent({ ...newEvent, rating: value })} />}
-        </div>
+
+      {profile && (
+        <Badge variant="outline" className="border-border/60 bg-muted/60 text-foreground font-medium text-xs rounded-xl">
+          👤 {profile}
+        </Badge>
       )}
-      {type === 'visit' && (
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <SelectWithOther label="Profil acquéreur" value={newEvent.buyer_profile} options={BUYER_PROFILE_OPTIONS} onChange={(value) => setNewEvent({ ...newEvent, buyer_profile: value })} />
-          <SelectWithOther label="Financement" value={newEvent.financing} options={FINANCING_OPTIONS} onChange={(value) => setNewEvent({ ...newEvent, financing: value })} />
-        </div>
+
+      {financing && (
+        <Badge variant="outline" className="border-border/60 bg-muted/60 text-foreground font-medium text-xs rounded-xl">
+          💳 {financing}
+        </Badge>
       )}
-      {type === 'offer' && (
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <SelectWithOther label="Condition principale" value={newEvent.offer_condition} options={OFFER_CONDITION_OPTIONS} onChange={(value) => setNewEvent({ ...newEvent, offer_condition: value })} />
-          <SelectWithOther label="Solidité" value={newEvent.offer_strength} options={OFFER_STRENGTH_OPTIONS} onChange={(value) => setNewEvent({ ...newEvent, offer_strength: value })} />
-        </div>
+
+      {amount != null && (
+        <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-bold text-xs rounded-xl">
+          💰 {amount.toLocaleString('fr-FR')} €
+        </Badge>
       )}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <label className="block w-full max-w-xs space-y-1">
-          <span className="text-xs font-extrabold uppercase text-slate-500">Visibilité</span>
-          <select
-            value={newEvent.visible_to_client ? 'client' : 'internal'}
-            onChange={(event) => setNewEvent({ ...newEvent, visible_to_client: event.target.value === 'client' })}
-            className={ADMIN_SELECT_CLASS}
-          >
-            <option value="client">Visible client</option>
-            <option value="internal">Interne uniquement</option>
-          </select>
-        </label>
-        <Button onClick={() => onAdd(type)} className={ADMIN_PRIMARY_ACTION_CLASS}><Plus className="mr-2 size-4" /> Ajouter</Button>
-      </div>
-    </Section>
+
+      {condition && (
+        <Badge variant="outline" className="border-border/60 bg-muted/60 text-foreground font-medium text-xs rounded-xl">
+          📜 {condition}
+        </Badge>
+      )}
+
+      {strength && (
+        <Badge variant="outline" className="border-border/60 bg-muted/60 text-foreground font-medium text-xs rounded-xl">
+          💪 {strength}
+        </Badge>
+      )}
+    </div>
   )
 }
 
-function EventList({
+function UnifiedEventWorkspace({
   title,
+  type,
+  icon: Icon,
   events,
+  newEvent,
+  setNewEvent,
+  submitting = false,
+  editingEventId,
+  onAdd,
+  onEdit,
+  onCancelEdit,
   onUpdate,
   onDelete,
 }: {
   title: string
+  type: string
+  icon: typeof BookOpen
   events: ClientEvent[]
+  newEvent: ReturnType<typeof emptyEventDraft>
+  setNewEvent: (event: ReturnType<typeof emptyEventDraft>) => void
+  submitting?: boolean
+  editingEventId?: string | null
+  onAdd: (type: string) => void
+  onEdit: (event: ClientEvent) => void
+  onCancelEdit: () => void
   onUpdate: (eventId: string, patch: Record<string, unknown>) => void
   onDelete: (eventId: string) => void
 }) {
+  const isEditing = Boolean(editingEventId)
+  const [isOpen, setIsOpen] = useState(events.length === 0)
+
+  useEffect(() => {
+    if (editingEventId) {
+      setIsOpen(true)
+    }
+  }, [editingEventId])
+
+  const statusOptions = type === 'visit' ? VISIT_STATUS_OPTIONS : type === 'offer' ? OFFER_STATUS_OPTIONS : EVENT_STATUS_OPTIONS
+  const currentStatus = statusOptions.some((option) => option.value === newEvent.status) ? newEvent.status : statusOptions[0]?.value ?? newEvent.status
+
+  const actionButtonText = isEditing
+    ? 'Fermer'
+    : isOpen
+    ? 'Fermer'
+    : type === 'milestone'
+    ? 'Nouvelle étape'
+    : type === 'visit'
+    ? 'Nouvelle visite'
+    : 'Nouvelle offre'
+
+  const sectionSubtitle = type === 'milestone'
+    ? 'Suivez l’avancement et l’historique des étapes du plan de vente'
+    : type === 'visit'
+    ? 'Consignez les visites d’acquéreurs, les retours et les impressions'
+    : 'Gérez et suivez les propositions d’achat reçues'
+
+  const actionButton = (
+    <Button
+      size="sm"
+      onClick={() => setIsOpen(!isOpen)}
+      className="h-10 font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs px-4 text-xs shrink-0"
+    >
+      {isOpen ? <X className="mr-1.5 size-4" /> : <Plus className="mr-1.5 size-4" />}
+      {actionButtonText}
+    </Button>
+  )
+
   return (
-    <Section title={title} icon={BookOpen}>
-      <div className="space-y-3">
-        {events.length === 0 && <p className="rounded-2xl border border-dashed p-5 text-sm text-muted-foreground">Aucune donnée pour le moment.</p>}
-        {events.map((event) => (
-          <div key={event.id} className="grid gap-3 rounded-2xl border bg-background p-4 md:grid-cols-[1fr_auto]">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold">{event.title}</span>
-                <Badge variant="outline">{event.status}</Badge>
-                <Badge variant="outline">{event.type}</Badge>
-                {!event.visible_to_client && <Badge variant="outline">Interne</Badge>}
-              </div>
-              {event.description && <p className="mt-1 text-sm text-muted-foreground">{event.description}</p>}
-              {event.event_date && <p className="mt-1 text-xs text-muted-foreground">{formatDate(event.event_date)}</p>}
-              {summarizeEventPayload(event.payload) && <p className="mt-1 text-xs font-semibold text-foreground">{summarizeEventPayload(event.payload)}</p>}
+    <Section title={title} subtitle={sectionSubtitle} icon={Icon} action={actionButton}>
+      {/* Collapsible Form Card */}
+      {isOpen && (
+        <div className={cn(
+          "rounded-2xl border p-5 space-y-4 shadow-2xs transition-all",
+          isEditing ? "border-primary/40 bg-primary/5 ring-1 ring-primary/30" : "border-border bg-muted/40"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-primary" />
+              <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                {isEditing
+                  ? (type === 'visit' ? 'Modifier la visite' : type === 'offer' ? 'Modifier l’offre' : 'Modifier l’étape')
+                  : (type === 'milestone' ? 'Ajouter une étape au plan de vente' : type === 'visit' ? 'Ajouter ou planifier une visite' : 'Ajouter une offre d’achat')
+                }
+              </h3>
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" size="sm" className={ADMIN_SECONDARY_ACTION_CLASS} onClick={() => onUpdate(event.id, { status: event.status === 'done' ? 'todo' : 'done' })}>
-                {event.status === 'done' ? 'À faire' : 'Terminer'}
-              </Button>
-              <Button variant="ghost" size="icon-sm" className={ADMIN_ICON_ACTION_CLASS} onClick={() => onDelete(event.id)}><Trash2 className="size-4" /></Button>
+            {isEditing && (
+              <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-semibold text-xs">
+                Mode modification
+              </Badge>
+            )}
+          </div>
+            {/* Row 1: Title / Milestone dropdown, Date, Status */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+              {type === 'milestone' ? (
+                <div className="lg:col-span-6">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    Étape du plan de vente
+                  </label>
+                  <SelectWithOther
+                    label="Étape"
+                    value={newEvent.title}
+                    options={MILESTONE_TYPE_OPTIONS}
+                    onChange={(value) => setNewEvent({ ...newEvent, title: value, milestone_kind: value })}
+                    compact
+                  />
+                </div>
+              ) : (
+                <div className="lg:col-span-5">
+                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                    {type === 'visit' ? 'Nom du visiteur / Titre' : 'Nom des acquéreurs'}
+                  </label>
+                  <Input
+                    value={newEvent.title}
+                    onChange={(event) => setNewEvent({ ...newEvent, title: event.target.value })}
+                    placeholder={type === 'visit' ? 'Ex. M. et Mme Dupont' : 'Ex. Offre M. Martin'}
+                    className={ADMIN_INPUT_CLASS}
+                  />
+                </div>
+              )}
+
+              <div className={cn("lg:col-span-3", type === 'milestone' ? "lg:col-span-3" : "lg:col-span-4")}>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                  Date prévue / effectuée
+                </label>
+                <Input
+                  type="date"
+                  value={newEvent.event_date}
+                  onChange={(event) => setNewEvent({ ...newEvent, event_date: event.target.value })}
+                  className={ADMIN_INPUT_CLASS}
+                />
+              </div>
+
+              <div className="lg:col-span-3">
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                  Statut
+                </label>
+                <SelectValue
+                  value={currentStatus}
+                  options={statusOptions}
+                  onChange={(value) => setNewEvent({ ...newEvent, status: value })}
+                />
+              </div>
+            </div>
+
+            {/* Extra fields for visit or offer */}
+            {type === 'visit' && (
+              <div className="space-y-3 pt-1">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-12 lg:items-end">
+                  <div className="lg:col-span-4">
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                      Niveau d’intérêt
+                    </label>
+                    <div className="flex items-center gap-1">
+                      {['1', '2', '3', '4', '5'].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setNewEvent({ ...newEvent, rating: newEvent.rating === star ? '' : star })}
+                          className={cn(
+                            "h-10 flex-1 rounded-xl border text-xs font-bold transition-all",
+                            newEvent.rating === star
+                              ? "border-amber-500/40 bg-amber-500/10 text-amber-600 shadow-2xs"
+                              : "border-input bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+                          )}
+                        >
+                          ★ {star}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-4">
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                      Profil acquéreur
+                    </label>
+                    <SelectWithOther
+                      label="Profil acquéreur"
+                      value={newEvent.buyer_profile}
+                      options={BUYER_PROFILE_OPTIONS}
+                      onChange={(value) => setNewEvent({ ...newEvent, buyer_profile: value })}
+                      compact
+                    />
+                  </div>
+
+                  <div className="lg:col-span-4">
+                    <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                      Financement
+                    </label>
+                    <SelectWithOther
+                      label="Financement"
+                      value={newEvent.financing}
+                      options={FINANCING_OPTIONS}
+                      onChange={(value) => setNewEvent({ ...newEvent, financing: value })}
+                      compact
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {type === 'offer' && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Montant de l’offre (€)" value={newEvent.amount} onChange={(value) => setNewEvent({ ...newEvent, amount: value })} />
+                <SelectWithOther label="Condition principale" value={newEvent.offer_condition} options={OFFER_CONDITION_OPTIONS} onChange={(value) => setNewEvent({ ...newEvent, offer_condition: value })} />
+                <SelectWithOther label="Solidité dossier" value={newEvent.offer_strength} options={OFFER_STRENGTH_OPTIONS} onChange={(value) => setNewEvent({ ...newEvent, offer_strength: value })} />
+              </div>
+            )}
+
+            {/* Description textarea */}
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
+                Compte-rendu / Description
+              </label>
+              <Textarea
+                className={cn(ADMIN_TEXTAREA_CLASS, "bg-card border-input resize-none")}
+                value={newEvent.description}
+                onChange={(event) => setNewEvent({ ...newEvent, description: event.target.value })}
+                placeholder="Description ou détails..."
+                rows={2}
+              />
+            </div>
+
+            {/* Bottom bar: Visibility toggle & Submit button */}
+            <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between border-t border-border/40">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-muted-foreground shrink-0">Visibilité :</label>
+                <select
+                  value={newEvent.visible_to_client ? 'client' : 'internal'}
+                  onChange={(event) => setNewEvent({ ...newEvent, visible_to_client: event.target.value === 'client' })}
+                  className="h-9 rounded-xl border border-input bg-card px-3 text-xs font-semibold text-foreground"
+                >
+                  <option value="client">👁️ Visible sur le portail client</option>
+                  <option value="internal">🔒 Interne uniquement (Privé agent)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isEditing && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onCancelEdit}
+                    className="h-10 font-medium rounded-xl border-input hover:bg-accent px-4 text-xs"
+                  >
+                    <X className="mr-1.5 size-4" />
+                    Annuler
+                  </Button>
+                )}
+
+                <Button
+                  onClick={() => onAdd(type)}
+                  disabled={submitting}
+                  className="h-10 font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs px-5 text-xs"
+                >
+                  {submitting ? (
+                    <Loader2 className="mr-1.5 size-4 animate-spin" />
+                  ) : isEditing ? (
+                    <CheckCircle2 className="mr-1.5 size-4" />
+                  ) : (
+                    <Plus className="mr-1.5 size-4" />
+                  )}
+                  {isEditing
+                    ? 'Enregistrer les modifications'
+                    : (type === 'milestone' ? 'Ajouter l’étape' : type === 'visit' ? 'Ajouter la visite' : 'Ajouter l’offre')
+                  }
+                </Button>
+              </div>
             </div>
           </div>
-        ))}
+        )}
+
+        {/* Stepper Progress Bar for Plan de vente */}
+        {type === 'milestone' && events.length > 0 && (
+          <div className="rounded-2xl border bg-muted/30 p-4 space-y-2.5 shadow-2xs">
+            <div className="flex items-center justify-between text-xs font-bold">
+              <span className="text-foreground uppercase tracking-wider flex items-center gap-2">
+                <Rocket className="size-4 text-primary" />
+                Plan de vente — {events.filter(e => e.status === 'done').length} sur {events.length} étape{events.length > 1 ? 's' : ''} validée{events.length > 1 ? 's' : ''}
+              </span>
+              <span className="text-primary font-extrabold text-sm">
+                {Math.round((events.filter(e => e.status === 'done').length / events.length) * 100)}%
+              </span>
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden border border-border/40">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 via-primary to-sky-500 transition-all duration-500 rounded-full"
+                style={{ width: `${Math.round((events.filter(e => e.status === 'done').length / events.length) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Bottom List / Timeline inside Section */}
+      <div className="mt-5 space-y-3">
+        {events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 p-8 text-center bg-card/40 space-y-2">
+            <Icon className="size-9 text-muted-foreground/50 mb-1" />
+            <p className="text-sm font-bold text-foreground">Aucune donnée pour le moment</p>
+            <p className="text-xs text-muted-foreground max-w-sm">
+              Utilisez le formulaire ci-dessus pour ajouter des éléments à cette section.
+            </p>
+          </div>
+        ) : type === 'milestone' ? (
+          <div className="relative pl-7 space-y-4 pt-1 before:absolute before:left-3.5 before:top-4 before:bottom-4 before:w-0.5 before:bg-border/60">
+            {events.map((event, index) => {
+              const isDone = event.status === 'done' || event.status === 'accepted'
+              const isPending = event.status === 'pending'
+              const isBeingEdited = editingEventId === event.id
+              const { icon: MilestoneIcon, colorClass } = getMilestoneIcon(event.title)
+
+              return (
+                <div key={event.id} className="relative group">
+                  {/* Timeline node */}
+                  <div
+                    className={cn(
+                      "absolute -left-7 top-4 flex size-7 -translate-x-1/2 items-center justify-center rounded-full text-xs font-extrabold transition-all duration-200 ring-4 ring-card z-10",
+                      isDone
+                        ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/30"
+                        : isPending
+                        ? "bg-primary text-primary-foreground animate-pulse shadow-md shadow-primary/30"
+                        : "bg-card text-muted-foreground border-2 border-border"
+                    )}
+                  >
+                    {isDone ? <CheckCircle2 className="size-4" /> : index + 1}
+                  </div>
+
+                  {/* Card content */}
+                  <div
+                    className={cn(
+                      "rounded-2xl border bg-card p-4 shadow-2xs transition-all hover:shadow-md hover:border-border/80 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+                      isDone && "border-emerald-500/30 bg-emerald-500/[0.02]",
+                      isPending && "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/30",
+                      isBeingEdited && "ring-2 ring-primary/40 border-primary bg-primary/5"
+                    )}
+                  >
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className={cn("flex size-7 items-center justify-center rounded-xl border text-xs font-bold shrink-0", colorClass)}>
+                          <MilestoneIcon className="size-3.5" />
+                        </div>
+                        <span className="font-bold text-sm text-foreground">{event.title}</span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "font-semibold text-xs",
+                            isDone && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600",
+                            isPending && "border-primary/30 bg-primary/10 text-primary animate-pulse",
+                            !isDone && !isPending && "border-amber-500/30 bg-amber-500/10 text-amber-600"
+                          )}
+                        >
+                          {isDone ? '✓ Terminé' : isPending ? '⏳ En cours' : 'À venir'}
+                        </Badge>
+                        {event.visible_to_client ? (
+                          <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-600 font-semibold text-xs">
+                            👁️ Visible client
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-muted-foreground/30 bg-muted text-muted-foreground font-semibold text-xs">
+                            🔒 Interne
+                          </Badge>
+                        )}
+                      </div>
+
+                      {event.description && <p className="text-xs text-muted-foreground leading-relaxed pl-9">{event.description}</p>}
+
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground font-medium pt-0.5 pl-9">
+                        {event.event_date && (
+                          <span>📅 {formatDate(event.event_date)}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-8 text-xs font-semibold rounded-xl px-3",
+                          isDone ? "text-muted-foreground" : "text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                        )}
+                        onClick={() => onUpdate(event.id, { status: isDone ? 'todo' : 'done' })}
+                      >
+                        <CheckCircle2 className="mr-1.5 size-3.5" />
+                        {isDone ? 'Marquer à faire' : 'Valider l’étape'}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className={cn(
+                          "h-8 w-8 text-muted-foreground hover:text-foreground rounded-lg",
+                          isBeingEdited && "bg-primary/10 text-primary"
+                        )}
+                        onClick={() => onEdit(event)}
+                        title="Modifier"
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-lg"
+                        onClick={() => onDelete(event.id)}
+                        title="Supprimer"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          events.map((event) => {
+            const isDone = event.status === 'done' || event.status === 'accepted'
+            const isBeingEdited = editingEventId === event.id
+            return (
+              <div
+                key={event.id}
+                className={cn(
+                  "rounded-2xl border bg-card p-4 shadow-2xs transition-all hover:border-border/80 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+                  isBeingEdited && "ring-2 ring-primary/40 border-primary bg-primary/5"
+                )}
+              >
+                <div className="space-y-1.5 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-bold text-sm text-foreground">{event.title}</span>
+                    <Badge variant="outline" className={isDone ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-semibold" : "border-amber-500/30 bg-amber-500/10 text-amber-600 font-semibold"}>
+                      {isDone ? 'Terminé' : event.status}
+                    </Badge>
+                    {event.visible_to_client ? (
+                      <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-600 font-semibold">
+                        👁️ Visible client
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="border-muted-foreground/30 bg-muted text-muted-foreground font-semibold">
+                        🔒 Interne
+                      </Badge>
+                    )}
+                  </div>
+
+                  {event.description && <p className="text-xs text-muted-foreground leading-relaxed">{event.description}</p>}
+
+                  <EventPayloadDetails payload={event.payload} />
+
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground font-medium pt-0.5">
+                    {event.event_date && (
+                      <span>📅 {formatDate(event.event_date)}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0 justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 text-xs font-semibold rounded-lg px-3",
+                      isDone ? "text-muted-foreground" : "text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                    )}
+                    onClick={() => onUpdate(event.id, { status: isDone ? 'todo' : 'done' })}
+                  >
+                    <CheckCircle2 className="mr-1.5 size-3.5" />
+                    {isDone ? 'Marquer à faire' : 'Terminer'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={cn(
+                      "h-8 w-8 text-muted-foreground hover:text-foreground rounded-lg",
+                      isBeingEdited && "bg-primary/10 text-primary"
+                    )}
+                    onClick={() => onEdit(event)}
+                    title="Modifier"
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-lg"
+                    onClick={() => onDelete(event.id)}
+                    title="Supprimer"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            )
+          })
+        )}
       </div>
     </Section>
   )
