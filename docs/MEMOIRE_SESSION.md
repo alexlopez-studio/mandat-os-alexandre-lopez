@@ -23,8 +23,9 @@ La branche locale `preview` peut etre en retard. Au 17/06/2026, elle etait encor
 - Commit de reference au 17/06/2026 : `a2c1358`
 - Projet : `alexlopez-studio/site-alex-lopez-provence`
 - Backoffice principal : `/app/dashboard`
-- URLs canoniques logiciel : `/app/dashboard`, `/app/leads`, `/app/radar`, `/app/properties`, `/app/acheteurs`, `/app/matching`, `/app/opportunities`, `/app/rules`, `/app/notifications`, `/app/zones`, `/app/settings`, `/app/utilisateurs`.
-- Anciennes entrees `/admin/market/*` et `/dashboard/radar` : conservees via redirects/rewrites, mais ne sont plus les URLs a utiliser en navigation courante.
+- URLs canoniques logiciel : `/app/dashboard`, `/app/leads`, `/app/properties`, `/app/acheteurs`, `/app/matching`, `/app/opportunities`, `/app/rules`, `/app/notifications`, `/app/zones`, `/app/settings`, `/app/utilisateurs`.
+- Anciennes entrees `/admin/market/*` : conservees via redirects/rewrites, mais ne sont plus les URLs a utiliser en navigation courante.
+- Radar MandatFinder (`/app/radar`) : page supprimee (tables `listings` / `seller_scores` absentes en base). Les anciennes URLs redirigent vers `/app/properties`.
 - Ancien suivi Linear : historique utile, mais ne reflete plus l'avancement reel du code.
 
 ## Ce qui est deja realise
@@ -43,7 +44,7 @@ Les lots historiques 1 a 4 ne sont plus a traiter comme non demarres. Ils ont et
 - Auth Supabase admin avec roles `super_admin` / `admin`.
 - Gestion utilisateurs : `/admin/market/utilisateurs`.
 - Liste chaude bouche-a-oreille : `/admin/market/liste-chaude`.
-- MandatFinder DDD : `src/lib/mandat/*`, migration core, radar, cron analyse.
+- MandatFinder DDD : `src/lib/mandat/*`, migration core, cron analyse.
 - Pipeline MandatFinder avec toggle et cron Vercel.
 - Alerting email "fenetre d'or" via Resend apres analyse.
 - Corrections recentes Stream Estate : endpoint `stream.estate`, `/documents/properties`, `hydra:member`.
@@ -127,7 +128,6 @@ Ecrans principaux a prendre en compte :
 - `/app/dashboard`
 - `/app/leads`
 - `/app/liste-chaude`
-- `/app/radar`
 - `/app/properties`
 - `/app/acheteurs`
 - `/app/matching`

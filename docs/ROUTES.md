@@ -16,7 +16,7 @@ Ce repo porte uniquement Mandat OS et les APIs metier associees.
 |-------|-------------|
 | `/` | Redirection vers `/app/dashboard` |
 | `/app/dashboard` | Vue d'ensemble Mandat OS |
-| `/app/radar` | Radar vendeurs / MandatFinder |
+| `/app/radar` | Supprime — redirige vers `/app/properties` |
 | `/app/contacts` | Annuaire unifie : vendeurs, acquereurs, partenaires pro, reseau |
 | `/app/contacts/[id]` | Detail contact (projets rattaches + historique) |
 | `/app/leads` | Supprime — redirige vers `/app/contacts` |
@@ -47,7 +47,9 @@ Ces routes restent conservees en redirection/rewrite pour compatibilite :
 | `/admin/market` | `/app/dashboard` |
 | `/admin/market/:path*` | `/app/:path*` |
 | `/dashboard` | `/app/dashboard` |
-| `/dashboard/radar` | `/app/radar` |
+| `/dashboard/radar` | `/app/properties` |
+| `/app/radar` | `/app/properties` |
+| `/app/dashboard/radar` | `/app/properties` |
 | `/app/dashboard/:path+` | `/app/:path*` |
 
 ## APIs principales
@@ -62,4 +64,3 @@ Ces routes restent conservees en redirection/rewrite pour compatibilite :
 | `/api/ai/*` | Assistant IA et credentials |
 | `/api/jobs/*` | Jobs et crons |
 | `/api/leads/*` | Gestion des leads relies aux opportunites |
-| `/api/radar/*` | Donnees radar MandatFinder |

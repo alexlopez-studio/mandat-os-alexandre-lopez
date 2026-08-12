@@ -1,5 +1,14 @@
 # MandatFinder — Architecture DDD (Domain Driven Design)
 
+> **Statut (2026-08) — document de conception, partiellement implemente.**
+> Les tables `listings`, `listing_events` et `seller_scores` decrites ici
+> n'existent pas en base live : seule la migration `005_mandatfinder_core.sql`
+> les declare. Le dashboard Radar (`/app/radar`), l'API `/api/radar/listings`
+> et `radar-queries.ts` ont ete supprimes le 13/08/2026 car ils ne renvoyaient
+> plus rien. Le scoring vendeur reellement en service s'appuie sur
+> `market_properties` via `src/lib/market/mandate-score.ts`, et s'affiche dans
+> `/app/properties` (badge `SellerPhaseBadge`).
+
 ## Vision produit
 
 > Prédire la probabilité qu'un propriétaire accepte un rendez-vous ou un mandat
@@ -26,7 +35,6 @@ src/
 │   │   ├── event-service.ts             ← Détection d'événements (price_drop, relisted...)
 │   │   ├── scoring-service.ts           ← Calcul du MandateProbabilityScore
 │   │   ├── analysis-service.ts          ← Analyse batch quotidienne
-│   │   ├── radar-queries.ts             ← Requêtes pour le dashboard Radar
 │   │   └── dvf-enricher.ts              ← V2 : enrichissement DVF / prix au m²
 │   │
 │   ├── stream-estate.ts                 ← Existant : client API Stream Estate
@@ -43,18 +51,6 @@ src/
 │   │   │   │   └── sync/                ← Sync contrôlée par CP + plafond max_items
 │   │   │   └── analyze-listings/        ← Cron : analyse + scoring quotidien
 │   │   │       └── route.ts
-│   │   └── radar/
-│   │       └── listings/                ← API : requêtes radar filtrées
-│   │           └── route.ts
-│   │
-│   └── dashboard/
-│       └── radar/                       ← Page Radar MandatFinder
-│           ├── page.tsx
-│           └── _components/
-│               ├── RadarKPIs.tsx
-│               ├── RadarFilters.tsx
-│               ├── RadarTable.tsx
-│               └── SellerPhaseBadge.tsx
 │
 ├── supabase/
 │   └── migrations/
@@ -162,18 +158,9 @@ MandateProbability → Résultat du scoring (0-100) + breakdown par axe
 **Déclencheur** : Cron `/api/jobs/analyze-listings`
 **Fréquence** : Quotidienne (la nuit)
 
-### 7. `radar-queries.ts` — Requêtes Radar
+---
 
-| Requête | Usage |
-|---------|-------|
-| `getHotListings()` | Score > 70 = fenêtre d'or |
-| `getPriceDrops()` | Vendeurs ayant baissé leur prix cette semaine |
-| `getRemovedListings()` | Annonces retirées récemment |
-| `getStaleListings()` | 90+ jours en ligne |
-| `getRelistedListings()` | Annonces republiées |
-| `getFilteredListings(filters)` | Filtres combinés (CP, score min, type, etc.) |
-
-### 8. `dvf-enricher.ts` — V2 : Enrichissement DVF
+### 7. `dvf-enricher.ts` — V2 : Enrichissement DVF
 
 | Responsabilité | Détail |
 |---------------|--------|
@@ -210,9 +197,9 @@ Stream Estate API
      ├─→ seller_scores (table)     ← Score journalier par vendeur
      │
      ▼
-[Radar Dashboard]  (affichage)
+[Fiche bien / liste marché]  (affichage)
      │
-     └─→ Vues filtrées par score, CP, type, phase...
+     └─→ Badge de phase vendeur et score sur /app/properties
 ```
 
 ---
@@ -286,7 +273,7 @@ seller_scores
 
 | Version | Features |
 |---------|----------|
-| **V1** | Import Stream Estate, snapshots, événements (price_drop, removed, relisted), scoring 4 axes (100pts), Dashboard Radar, CRONS quotidiens |
+| **V1** | Import Stream Estate, snapshots, événements (price_drop, removed, relisted), scoring 4 axes (100pts), CRONS quotidiens |
 | **V2** | DVF (prix/m² référentiel), surcote/décote dans le scoring, Cadastre, PLU, multi-utilisateurs, notifications Telegram |
 | **V3** | CRM intégré, IA DeepSeek pour recommandations, prédiction de mandat |
 

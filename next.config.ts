@@ -13,9 +13,16 @@ const nextConfig: NextConfig = {
         destination: '/app/:path*',
         permanent: false,
       },
+      // Le Radar MandatFinder a ete retire : les anciennes URLs retombent
+      // sur la liste des biens du marche.
+      {
+        source: '/app/radar',
+        destination: '/app/properties',
+        permanent: false,
+      },
       {
         source: '/app/dashboard/radar',
-        destination: '/app/radar',
+        destination: '/app/properties',
         permanent: false,
       },
       {
@@ -46,7 +53,7 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/dashboard/radar',
-        destination: '/app/radar',
+        destination: '/app/properties',
         permanent: false,
       },
     ]

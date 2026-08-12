@@ -41,9 +41,9 @@ import {
   PageLayout,
   PageSection,
   SearchInput,
+  SellerPhaseBadge,
 } from '@/components/pro'
 import type { SellerPhase } from '@/lib/mandat/types'
-import { SellerPhaseBadge } from '@/app/dashboard/radar/_components/SellerPhaseBadge'
 import { DimensionBadges } from '../DimensionBadges'
 
 interface PropertyRow {
@@ -202,7 +202,7 @@ export function PropertiesTable({
 
   function clearZipcodeFilter() {
     setZipcodeFilter(null)
-    router.replace('/admin/market/radar')
+    router.replace('/app/properties')
   }
 
   async function createOpportunity(property: PropertyRow) {
@@ -267,7 +267,7 @@ export function PropertiesTable({
   return (
     <PageLayout width="wide">
       <PageHeader
-        eyebrow="Aspiration & Radar"
+        eyebrow="Veille marché"
         title="Biens du marché"
         description={`${loading ? '...' : total} bien(s) synchronisé(s) sur le secteur.`}
       />

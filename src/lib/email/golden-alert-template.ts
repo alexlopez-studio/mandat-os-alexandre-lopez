@@ -89,7 +89,7 @@ export function buildGoldenAlertEmail(listings: GoldenListing[]): {
     ${cards}
     <p style="margin:20px 0 0;color:#9ca3af;font-size:12px">
       Généré automatiquement par le pipeline MandatFinder ·
-      <a href="https://site-alex-lopez-provence.vercel.app/app/radar" style="color:#6b7280">Voir le Radar complet</a>
+      <a href="https://site-alex-lopez-provence.vercel.app/app/properties" style="color:#6b7280">Voir les biens du marché</a>
     </p>
   </div>
 
@@ -114,7 +114,7 @@ export function buildGoldenAlertEmail(listings: GoldenListing[]): {
       ].filter(Boolean).join('\n')
     }),
     '',
-    'Radar complet : https://site-alex-lopez-provence.vercel.app/app/radar',
+    'Biens du marché : https://site-alex-lopez-provence.vercel.app/app/properties',
   ].join('\n')
 
   return { subject, html, text }

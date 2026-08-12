@@ -112,52 +112,6 @@ export interface MandateProbability {
     calculated_at: string
 }
 
-// ── Radar Filters ────────────────────────────────────────
-
-export interface RadarFilters {
-    zipcodes?: string[]
-    property_types?: string[]
-    min_score?: number
-    max_score?: number
-    phases?: SellerPhase[]
-    statuses?: ListingStatus[]
-    event_types?: ListingEventType[]
-    days_online_min?: number
-    days_online_max?: number
-    price_min?: number
-    price_max?: number
-    has_price_drop?: boolean
-    is_relisted?: boolean
-    limit?: number
-    offset?: number
-}
-
-// ── Radar Listing (vue dashboard enrichie) ───────────────
-
-export interface RadarListing {
-    id: string
-    external_id: string
-    title: string | null
-    city: string | null
-    zipcode: string | null
-    property_type: string | null
-    price: number | null
-    surface: number | null
-    rooms: number | null
-    url: string | null
-    status: ListingStatus
-    first_seen_at: string
-    last_seen_at: string
-    days_online: number
-    score: number
-    phase: SellerPhase
-    price_drops_count: number
-    last_price_drop_percent: number | null
-    total_drop_percent: number | null
-    is_relisted: boolean
-    last_event: ListingEventType | null
-}
-
 // ── Batch Result ─────────────────────────────────────────
 
 export interface BatchResult {

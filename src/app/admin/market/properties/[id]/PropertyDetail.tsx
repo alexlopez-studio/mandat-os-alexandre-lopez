@@ -32,7 +32,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
-import { SellerPhaseBadge } from '@/app/dashboard/radar/_components/SellerPhaseBadge'
+import { SellerPhaseBadge } from '@/components/pro'
 import { DimensionBadges } from '../../DimensionBadges'
 
 // ── Types (réponse /api/market/properties/[id]) ─────────────
@@ -311,7 +311,7 @@ export function PropertyDetail() {
     return (
       <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
         <p className="text-sm font-semibold text-destructive">{error ?? 'Bien introuvable'}</p>
-        <Button variant="outline" onClick={() => router.push('/admin/market/radar')} className="rounded-full">
+        <Button variant="outline" onClick={() => router.push('/app/properties')} className="rounded-full">
           Retour aux biens
         </Button>
       </div>
@@ -331,7 +331,7 @@ export function PropertyDetail() {
     <div className="space-y-6">
       {/* Top Navigation Link */}
       <div>
-        <Link href="/admin/market/radar" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+        <Link href="/app/properties" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="size-4" /> Retour aux biens du marché
         </Link>
       </div>

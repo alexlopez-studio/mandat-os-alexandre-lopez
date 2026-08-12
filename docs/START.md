@@ -77,6 +77,5 @@ Avant toute reponse finale apres une tache, l'assistant doit verifier que `docs/
 Ces points doivent etre relus au `start` et actualises dans `docs/SUIVI_PROJET.md` quand ils changent :
 
 - Auth admin : la garde locale de `/admin/market` est temporairement neutralisee pour accelerer la navigation locale ; verifier/reactiver avant mise en production.
-- Radar : les endpoints `/api/radar/listings` peuvent logguer des erreurs Supabase si les tables `listings` / `listing_events` ne sont pas presentes dans l'environnement.
 - Audit qualite : completer un audit Playwright cible sur la navigation sidebar et les routes `/app/*` quand l'environnement de test est pret.
-- Documentation : garder `docs/ROUTES.md` et la memoire de session alignes avec les URLs canoniques `/app/dashboard`, `/app/leads`, `/app/radar`, etc.
+- Documentation : garder `docs/ROUTES.md` et la memoire de session alignes avec les URLs canoniques `/app/dashboard`, `/app/leads`, `/app/properties`, etc.

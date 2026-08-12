@@ -6,7 +6,7 @@ import { ArrowUpRight, Flame, Timer, TrendingDown, RefreshCw } from 'lucide-reac
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import type { SellerPhase } from '@/lib/mandat/types'
-import { SellerPhaseBadge } from '@/app/dashboard/radar/_components/SellerPhaseBadge'
+import { SellerPhaseBadge } from '@/components/pro'
 import { SellerTypeBadge } from './DimensionBadges'
 
 interface MandateScore {

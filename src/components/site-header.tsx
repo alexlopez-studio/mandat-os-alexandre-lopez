@@ -3,7 +3,6 @@
 import { usePathname } from 'next/navigation'
 
 const PAGE_TITLES: Record<string, string> = {
-  '/app/radar': 'Radar',
   '/app/contacts': 'Contacts',
   '/app/dashboard': 'Dashboard',
   '/app/properties': 'Marché',

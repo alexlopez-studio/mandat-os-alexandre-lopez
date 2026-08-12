@@ -14,7 +14,6 @@ const PROTECTED_API_PREFIXES = [
   '/api/ai',
   '/api/leads',
   '/api/market',
-  '/api/radar',
 ]
 
 const PUBLIC_API_PATHS = [
@@ -72,6 +71,5 @@ export const config = {
     '/api/ai/:path*',
     '/api/leads/:path*',
     '/api/market/:path*',
-    '/api/radar/:path*',
   ],
 }
