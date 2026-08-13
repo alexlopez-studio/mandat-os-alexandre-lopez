@@ -29,7 +29,7 @@ export async function GET() {
 
 /**
  * PATCH /api/market/settings
- * Met à jour un ou plusieurs paramètres : { "mandatfinder_pipeline_enabled": false }
+ * Met à jour un ou plusieurs paramètres : { "stream_estate_monthly_budget_eur": 50 }
  */
 export async function PATCH(req: NextRequest) {
   try {

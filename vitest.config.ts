@@ -7,4 +7,9 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  test: {
+    // `.claude/worktrees/` contient des copies completes du depot : sans cette
+    // exclusion, chaque test est collecte et execute deux fois.
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.next/**', '.claude/**'],
+  },
 })

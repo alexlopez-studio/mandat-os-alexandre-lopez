@@ -6,8 +6,6 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import type { Json } from '@/types/supabase'
 
-export const MANDATFINDER_PIPELINE_ENABLED_KEY = 'mandatfinder_pipeline_enabled'
-
 // ── Cadence de re-vérification du monitoring (règles, ajustables) ──
 // Intervalle minimal en heures entre deux re-checks d'un lead, selon sa phase.
 export const MONITORING_RECHECK_HOURS_KEYS = {
@@ -51,15 +49,6 @@ export async function setSetting(key: string, value: Json): Promise<void> {
         .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
 
     if (error) throw error
-}
-
-/**
- * Indique si le pipeline MandatFinder (import Stream Estate + scoring)
- * est activé. Par défaut `true` pour conserver le comportement actuel
- * si le paramètre n'existe pas encore.
- */
-export async function isMandatFinderPipelineEnabled(): Promise<boolean> {
-    return getSetting<boolean>(MANDATFINDER_PIPELINE_ENABLED_KEY, true)
 }
 
 /**
