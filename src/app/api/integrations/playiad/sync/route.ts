@@ -186,11 +186,13 @@ export async function POST(req: NextRequest) {
         if (lead.propertyTitle) criteres.push(`Bien: ${lead.propertyTitle}`)
         if (lead.message) criteres.push(`Message: ${lead.message}`)
 
+        // Le lead est l'acquereur : il signera l'acte, donc titulaire.
         const title =
           buildProjectTitle({
-            contactLastNames: lead.lastName ? [lead.lastName] : [],
-            propertyType: lead.propertyType,
-          }) || `${displayName.toUpperCase()} - Recherche`
+            titulaireLastNames: lead.lastName ? [lead.lastName] : [],
+            declaredName: lead.lastName ? null : displayName,
+            city: lead.city,
+          }) || displayName.toUpperCase()
 
         const { data: project, error: projectError } = await supabaseAdmin
           .from('projects')
@@ -218,6 +220,7 @@ export async function POST(req: NextRequest) {
           contact_id: contactId,
           buyer_criteria_id: project.id,
           role: 'Acquéreur principal',
+          is_titulaire: true,
         })
 
         createdCount += 1

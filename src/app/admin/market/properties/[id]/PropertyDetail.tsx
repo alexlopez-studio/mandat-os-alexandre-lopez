@@ -267,7 +267,7 @@ export function PropertyDetail() {
       if (!res.ok) throw new Error('Erreur lors de la création de l’opportunité')
       const json = await res.json()
       toast.success('Projet créé avec succès !')
-      router.push(`/admin/market/opportunities/${json.id}`)
+      router.push(`/admin/market/projects/${json.id}`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Création impossible')
     } finally {
@@ -368,7 +368,7 @@ export function PropertyDetail() {
               </Button>
             ) : (
               <Button asChild variant="secondary" className="rounded-full font-bold text-xs h-9">
-                <Link href={`/admin/market/opportunities/${opportunity.id}`}>
+                <Link href={`/admin/market/projects/${opportunity.id}`}>
                   <Star className="size-3.5 mr-1.5 text-amber-500 fill-amber-500" />
                   Ouvrir le projet
                 </Link>
@@ -707,7 +707,7 @@ export function PropertyDetail() {
 
             {opportunity ? (
               <Link
-                href={`/admin/market/opportunities/${opportunity.id}`}
+                href={`/admin/market/projects/${opportunity.id}`}
                 className="block rounded-xl border bg-muted/30 p-4 hover:border-primary/40 transition-all space-y-2"
               >
                 <p className="text-sm font-bold text-foreground">{opportunity.title}</p>

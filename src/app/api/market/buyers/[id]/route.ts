@@ -77,8 +77,11 @@ export async function GET(
     const [linksRes, eventsRes, clientDossier, propertyRes] = await Promise.all([
       supabaseAdmin
         .from('project_contacts')
-        .select('contact_id, role')
-        .or(`buyer_criteria_id.eq.${projectId},opportunity_id.eq.${projectId}`),
+        // Ordre explicite : il fixe l'ordre des titulaires dans le titre.
+        .select('contact_id, role, is_titulaire')
+        .or(`buyer_criteria_id.eq.${projectId},opportunity_id.eq.${projectId}`)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true }),
       supabaseAdmin
         .from('activities')
         .select('*')
@@ -115,6 +118,7 @@ export async function GET(
           email: c?.email || null,
           phone: c?.phone || null,
           role: l.role,
+          is_titulaire: l.is_titulaire === true,
         }
       })
     }
@@ -122,9 +126,8 @@ export async function GET(
     const events = eventsRes.data ?? []
 
     const displayTitle = buildProjectTitle({
-      contactLastNames: contacts.map((c) => c.last_name),
-      contactName: contacts[0]?.name ?? null,
-      propertyType: buyer.type_bien,
+      titulaireLastNames: contacts.filter((c) => c.is_titulaire).map((c) => c.last_name),
+      city: (buyer.communes ?? [])[0] ?? null,
     })
 
     return NextResponse.json({

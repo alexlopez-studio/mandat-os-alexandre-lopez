@@ -40,7 +40,7 @@ function titleFromLead(lead: Lead, sellerProperty: SellerProperty | null) {
   if (name && property) return `${name} - ${property}`
   if (name) return `${name} - projet vendeur`
   if (property) return `Vendeur - ${property}`
-  return 'Opportunité vendeur'
+  return 'Projet Vente'
 }
 
 async function appendActivity(opportunityId: string, input: {

@@ -5,13 +5,16 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft,
+  Building2,
   Calendar,
   CheckCircle2,
   ChevronDown,
   Clock,
   Edit,
   ExternalLink,
+  History,
   Home,
+
   Loader2,
   Mail,
   MapPin,
@@ -400,7 +403,7 @@ export default function ContactDetailPage() {
               size="sm"
               className="font-semibold rounded-lg text-primary border-primary/30 hover:bg-primary/5"
             >
-              <Link href={`/admin/market/opportunities/nouveau?kind=achat&contact_id=${contact.id}`}>
+              <Link href={`/admin/market/projects/nouveau?kind=achat&contact_id=${contact.id}`}>
                 <Plus className="mr-1.5 size-4" /> Projet d'achat
               </Link>
             </Button>
@@ -410,7 +413,7 @@ export default function ContactDetailPage() {
               size="sm"
               className="font-semibold rounded-lg text-emerald-700 border-emerald-200 hover:bg-emerald-50"
             >
-              <Link href={`/admin/market/opportunities/nouveau?kind=vente&contact_id=${contact.id}`}>
+              <Link href={`/admin/market/projects/nouveau?kind=vente&contact_id=${contact.id}`}>
                 <Plus className="mr-1.5 size-4" /> Projet vendeur
               </Link>
             </Button>
@@ -460,12 +463,17 @@ export default function ContactDetailPage() {
           {/* Card 1: PROJETS VENDEUR */}
           <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                PROJET{opportunities.length > 1 ? 'S' : ''} DE VENTE
-              </h2>
-              <Badge variant="secondary" className="text-xs font-bold">
-                {opportunities.length}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Building2 className="size-4 text-primary" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  PROJET{opportunities.length > 1 ? 'S' : ''} DE VENTE
+                </h2>
+                {opportunities.length > 0 && (
+                  <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-bold text-[10px] h-5 px-2">
+                    {opportunities.length}
+                  </Badge>
+                )}
+              </div>
             </div>
 
             {opportunities.length === 0 ? (
@@ -477,7 +485,7 @@ export default function ContactDetailPage() {
                 {opportunities.map((opp) => (
                   <Link
                     key={opp.id}
-                    href={`/admin/market/opportunities/${opp.id}`}
+                    href={`/admin/market/projects/${opp.id}`}
                     className="block rounded-xl border bg-muted/40 p-4 hover:border-primary/40 transition-colors space-y-2"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -505,12 +513,17 @@ export default function ContactDetailPage() {
           {/* Card 2: PROJETS D'ACHAT */}
           <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                PROJET{buyerCriteria.length > 1 ? 'S' : ''} D'ACHAT
-              </h2>
-              <Badge variant="secondary" className="text-xs font-bold">
-                {buyerCriteria.length}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Search className="size-4 text-primary" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  PROJET{buyerCriteria.length > 1 ? 'S' : ''} D'ACHAT
+                </h2>
+                {buyerCriteria.length > 0 && (
+                  <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-bold text-[10px] h-5 px-2">
+                    {buyerCriteria.length}
+                  </Badge>
+                )}
+              </div>
             </div>
 
             {buyerCriteria.length === 0 ? (
@@ -542,7 +555,7 @@ export default function ContactDetailPage() {
                     </h3>
 
                     <div className="text-xs text-muted-foreground font-medium">
-                      💰 Budget max : {bc.budget_max ? `${(bc.budget_max/1000).toFixed()} k€` : 'Non défini'}
+                      Budget max : {bc.budget_max ? `${(bc.budget_max/1000).toFixed()} k€` : 'Non défini'}
                     </div>
                   </Link>
                 ))}
@@ -556,9 +569,18 @@ export default function ContactDetailPage() {
           <div className="rounded-2xl border bg-card p-6 shadow-xs space-y-6">
             {/* Header & Filter Dropdown */}
             <div className="flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                JOURNAL D'ACTIVITÉ
-              </h2>
+              <div className="flex items-center gap-2">
+                <History className="size-4 text-primary" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  JOURNAL D'ACTIVITÉ
+                </h2>
+                {filteredActivities.length > 0 && (
+                  <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary font-bold text-[10px] h-5 px-2">
+                    {filteredActivities.length} activité{filteredActivities.length > 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </div>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-7 text-xs font-bold uppercase tracking-wider text-muted-foreground rounded-full px-4">
@@ -608,7 +630,8 @@ export default function ContactDetailPage() {
                 onClick={() => openEventModal('meeting')}
                 className="h-8 text-xs font-semibold rounded-lg"
               >
-                <Calendar className="mr-2 size-3.5 text-amber-600" /> + RDV
+                <Calendar className="mr-2 size-3.5 text-amber-600" /> + Rendez-vous
+
               </Button>
             </div>
 

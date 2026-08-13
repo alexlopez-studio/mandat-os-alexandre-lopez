@@ -162,7 +162,7 @@ export function DashboardCockpit() {
 
   const kpis = [
     { label: 'Actions dues', value: payload?.kpis.actions_due ?? 0, detail: 'retard + aujourd’hui' },
-    { label: 'Opportunités actives', value: payload?.kpis.opportunities_active ?? 0, detail: 'vendeurs + acquéreurs' },
+    { label: 'Projets actifs', value: payload?.kpis.opportunities_active ?? 0, detail: 'vendeurs + acquéreurs' },
     { label: 'Mandats signés', value: payload?.kpis.signed_mandates ?? 0, detail: 'vente + recherche' },
     { label: 'Réseau à relancer', value: payload?.kpis.network_to_relaunch ?? 0, detail: 'échéance atteinte' },
     { label: 'Biens chauds', value: payload?.kpis.hot_properties ?? 0, detail: 'hot + golden' },
@@ -191,9 +191,9 @@ export function DashboardCockpit() {
               Actualiser
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/app/opportunities">
+              <Link href="/admin/market/projects/nouveau">
                 <PlusIcon />
-                Nouvelle opportunité
+                Nouveau projet
               </Link>
             </Button>
             <Button variant="default" size="sm" asChild>
@@ -226,7 +226,7 @@ export function DashboardCockpit() {
             <CardHeader className="flex-row items-start justify-between border-b border-border">
               <div>
                 <CardTitle>Activité 30 jours</CardTitle>
-                <p className="text-xs text-muted-foreground">Opportunités créées et actions planifiées</p>
+                <p className="text-xs text-muted-foreground">Projets créés et actions planifiées</p>
               </div>
             </CardHeader>
             <CardContent className="h-64 pt-3">
@@ -237,7 +237,8 @@ export function DashboardCockpit() {
                     <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: CHART_COLORS.muted }} />
                     <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: CHART_COLORS.muted }} />
                     <Tooltip cursor={{ stroke: CHART_COLORS.primary, strokeWidth: 1 }} />
-                    <Line type="monotone" dataKey="opportunities" name="Opportunités" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="opportunities" name="Projets" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} />
+
                     <Line type="monotone" dataKey="actions" name="Actions" stroke={CHART_COLORS.success} strokeWidth={2} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>

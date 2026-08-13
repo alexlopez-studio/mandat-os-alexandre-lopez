@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { PageHeader, PageLayout, PageSection } from '@/components/pro'
+import { formatProjectLabel } from '@/lib/project-stages'
 import { cn } from '@/lib/utils'
 
 type ProjectRow = {
@@ -30,6 +31,8 @@ type ProjectRow = {
   kind: 'vente' | 'achat'
   title?: string
   display_title?: string
+  /** Reference prononcable "AA-NNN", figee a la creation. */
+  reference?: string | null
   stage?: string | null
   property_city?: string | null
   communes?: string[] | null
@@ -212,7 +215,7 @@ export function AssistantWorkspace() {
                   <div>
                     <h2 className="text-base font-bold text-foreground">Conversation</h2>
                     <p className="text-xs text-muted-foreground font-medium">
-                      {selectedProject ? `Contexte actif : ${selectedProject.display_title || selectedProject.title}` : 'Aucun projet sélectionné (conversation générale)'}
+                      {selectedProject ? `Contexte actif : ${formatProjectLabel(selectedProject.reference, selectedProject.display_title || selectedProject.title)}` : 'Aucun projet sélectionné (conversation générale)'}
                     </p>
                   </div>
                 </div>
@@ -236,7 +239,7 @@ export function AssistantWorkspace() {
                     >
                       PROJET {selectedProject.kind === 'achat' ? 'ACHAT' : 'VENTE'}
                     </Badge>
-                    <span className="font-bold text-foreground">{selectedProject.display_title || selectedProject.title}</span>
+                    <span className="font-bold text-foreground">{formatProjectLabel(selectedProject.reference, selectedProject.display_title || selectedProject.title)}</span>
                     {selectedProject.stage && (
                       <Badge variant="secondary" className="bg-primary/10 text-primary border-none rounded-full text-[10px] font-bold">
                         {selectedProject.stage}
@@ -294,7 +297,7 @@ export function AssistantWorkspace() {
                 <Textarea
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
-                  placeholder={selectedProject ? `Poser une question sur le projet ${selectedProject.display_title || selectedProject.title}...` : "Posez une question à l'assistant..."}
+                  placeholder={selectedProject ? `Poser une question sur le projet ${formatProjectLabel(selectedProject.reference, selectedProject.display_title || selectedProject.title)}...` : "Posez une question à l'assistant..."}
                   className="min-h-11 max-h-24 rounded-xl bg-background border-border focus-visible:ring-primary/20 resize-none px-3.5 py-2.5 text-sm outline-none"
                   onKeyDown={(event) => {
                     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
@@ -370,7 +373,7 @@ export function AssistantWorkspace() {
                     <SelectItem value="none" className="text-xs font-medium">Aucun projet (conversation générale)</SelectItem>
                     {filteredProjects.map((p) => (
                       <SelectItem key={p.id} value={p.id} className="text-xs font-medium">
-                        [{p.kind === 'achat' ? 'ACHAT' : 'VENTE'}] {p.display_title || p.title}
+                        [{p.kind === 'achat' ? 'ACHAT' : 'VENTE'}] {formatProjectLabel(p.reference, p.display_title || p.title)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -400,12 +403,12 @@ export function AssistantWorkspace() {
                           </Badge>
                         )}
                       </div>
-                      <h3 className="font-bold text-xs text-foreground pt-1 truncate">{selectedProject.display_title || selectedProject.title}</h3>
+                      <h3 className="font-bold text-xs text-foreground pt-1 truncate">{formatProjectLabel(selectedProject.reference, selectedProject.display_title || selectedProject.title)}</h3>
                     </div>
 
                     <Button
                       onClick={() => {
-                        const title = selectedProject.display_title || selectedProject.title
+                        const title = formatProjectLabel(selectedProject.reference, selectedProject.display_title || selectedProject.title)
                         setInput(`Fais-moi une analyse complète du projet ${selectedProject.kind === 'achat' ? 'd’achat' : 'de vente'} "${title}" (prochaines étapes et recommandations).`)
                       }}
                       className="w-full h-8 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-[11px] font-bold shadow-xs"

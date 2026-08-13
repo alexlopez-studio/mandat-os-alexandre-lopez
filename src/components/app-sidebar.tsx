@@ -46,9 +46,10 @@ const PILOTAGE_ITEMS: SidebarNavItem[] = [
 
 const OPPORTUNITY_ITEMS: SidebarNavItem[] = [
   { title: "Contacts", url: "/app/contacts", icon: UserPlusIcon },
-  { title: "Projets", url: "/app/opportunities", icon: KanbanIcon },
+  { title: "Projets", url: "/app/projects", icon: KanbanIcon },
   { title: "Imports estimation", url: "/app/estimation-imports", icon: SparklesIcon },
 ]
+
 
 const MARKET_ITEMS: SidebarNavItem[] = [
   { title: "Biens", url: "/app/properties", icon: Building2Icon },

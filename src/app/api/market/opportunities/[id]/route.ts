@@ -261,10 +261,13 @@ async function cloneLeadForNewProject(sourceLeadId: string): Promise<string> {
  * pas résoudre la relation vers `project_contacts`, la jointure est faite à la main.
  */
 async function loadProjectContacts(opportunityId: string) {
+  // Ordre explicite : il fixe l'ordre des titulaires dans le titre du projet.
   const { data: links, error } = await supabaseAdmin
     .from('project_contacts')
-    .select('contact_id, role, opportunity_id, buyer_criteria_id')
+    .select('contact_id, role, is_titulaire, opportunity_id, buyer_criteria_id')
     .or(`opportunity_id.eq.${opportunityId},buyer_criteria_id.eq.${opportunityId}`)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
 
   if (error) {
     console.error('[API /market/opportunities/[id]] project_contacts error:', error)
@@ -308,12 +311,20 @@ async function loadProjectContacts(opportunityId: string) {
 
   if (links && links.length > 0) {
     return links
-      .map((link) => ({ role: link.role, contacts: contactById.get(link.contact_id) ?? null }))
+      .map((link) => ({
+        role: link.role,
+        is_titulaire: link.is_titulaire === true,
+        contacts: contactById.get(link.contact_id) ?? null,
+      }))
       .filter((entry) => entry.contacts !== null)
   }
 
+  // Aucun lien : les contacts viennent du lead d'origine, donc du vendeur
+  // declare. On les considere titulaires, faute de quoi les dossiers encore
+  // rattaches par le lead perdraient leur titre.
   return (contacts ?? []).map((contact, idx) => ({
     role: idx === 0 && contacts.length === 1 ? 'Vendeur unique' : (idx === 0 ? 'Vendeur principal' : 'Co-vendeur'),
+    is_titulaire: true,
     contacts: contact,
   }))
 }
@@ -350,9 +361,11 @@ export async function GET(
         ...enriched,
         project_contacts: projectContacts,
         display_title: buildProjectTitle({
-          contactLastNames: projectContacts.map((entry) => entry.contacts?.last_name),
-          contactName: opportunity.seller_name,
-          propertyType: opportunity.property_type,
+          titulaireLastNames: projectContacts
+            .filter((entry) => entry.is_titulaire)
+            .map((entry) => entry.contacts?.last_name),
+          declaredName: projectContacts.length === 0 ? opportunity.seller_name : null,
+          city: opportunity.property_city,
         }),
       },
     })

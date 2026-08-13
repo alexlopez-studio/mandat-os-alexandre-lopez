@@ -43,6 +43,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { AudienceTrackingPanel } from '../opportunities/[id]/AudienceTrackingPanel'
 import { PersonalizationCard } from './PersonalizationCard'
+import { MilestoneStepper } from '@/components/pro'
 import type { Json } from '@/types/supabase'
 
 /**
@@ -301,12 +302,15 @@ export function DossierWorkspace({ dossierId, opportunityId }: { dossierId: stri
           ? (type === 'visit' ? 'Visite modifiée' : type === 'offer' ? 'Offre modifiée' : 'Étape modifiée')
           : (type === 'visit' ? 'Visite enregistrée' : type === 'offer' ? 'Offre ajoutée' : 'Étape ajoutée')
       )
+      return true
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Action impossible')
+      return false
     } finally {
       setSubmittingEvent(false)
     }
   }
+
 
   async function updateEvent(eventId: string, patch: Record<string, unknown>) {
     const res = await fetch(`/api/market/clients/${dossierId}/events`, {
@@ -753,18 +757,23 @@ function Field({
   label,
   value,
   onChange,
+  type = 'text',
+  placeholder,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
+  type?: string
+  placeholder?: string
 }) {
   return (
     <label className="block space-y-1">
       <span className="text-xs font-extrabold uppercase text-slate-500">{label}</span>
-      <Input value={value} onChange={(event) => onChange(event.target.value)} className={ADMIN_INPUT_CLASS} />
+      <Input type={type} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} className={ADMIN_INPUT_CLASS} />
     </label>
   )
 }
+
 
 function SelectWithOther({
   label,
@@ -1065,14 +1074,14 @@ function UnifiedEventWorkspace({
   setNewEvent: (event: ReturnType<typeof emptyEventDraft>) => void
   submitting?: boolean
   editingEventId?: string | null
-  onAdd: (type: string) => void
+  onAdd: (type: string) => Promise<boolean | void> | boolean | void
   onEdit: (event: ClientEvent) => void
   onCancelEdit: () => void
   onUpdate: (eventId: string, patch: Record<string, unknown>) => void
   onDelete: (eventId: string) => void
 }) {
   const isEditing = Boolean(editingEventId)
-  const [isOpen, setIsOpen] = useState(events.length === 0)
+  const [isOpen, setIsOpen] = useState(false)
 
   useEffect(() => {
     if (editingEventId) {
@@ -1080,14 +1089,23 @@ function UnifiedEventWorkspace({
     }
   }, [editingEventId])
 
+  const handleCancel = () => {
+
+    onCancelEdit()
+    setIsOpen(false)
+  }
+
+  const handleAdd = async () => {
+    const success = await onAdd(type)
+    if (success !== false) {
+      setIsOpen(false)
+    }
+  }
+
   const statusOptions = type === 'visit' ? VISIT_STATUS_OPTIONS : type === 'offer' ? OFFER_STATUS_OPTIONS : EVENT_STATUS_OPTIONS
   const currentStatus = statusOptions.some((option) => option.value === newEvent.status) ? newEvent.status : statusOptions[0]?.value ?? newEvent.status
 
-  const actionButtonText = isEditing
-    ? 'Fermer'
-    : isOpen
-    ? 'Fermer'
-    : type === 'milestone'
+  const actionButtonText = type === 'milestone'
     ? 'Nouvelle étape'
     : type === 'visit'
     ? 'Nouvelle visite'
@@ -1099,16 +1117,16 @@ function UnifiedEventWorkspace({
     ? 'Consignez les visites d’acquéreurs, les retours et les impressions'
     : 'Gérez et suivez les propositions d’achat reçues'
 
-  const actionButton = (
+  const actionButton = !isOpen ? (
     <Button
       size="sm"
-      onClick={() => setIsOpen(!isOpen)}
+      onClick={() => setIsOpen(true)}
       className="h-10 font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs px-4 text-xs shrink-0"
     >
-      {isOpen ? <X className="mr-1.5 size-4" /> : <Plus className="mr-1.5 size-4" />}
+      <Plus className="mr-1.5 size-4" />
       {actionButtonText}
     </Button>
-  )
+  ) : null
 
   return (
     <Section title={title} subtitle={sectionSubtitle} icon={Icon} action={actionButton}>
@@ -1150,28 +1168,22 @@ function UnifiedEventWorkspace({
                   />
                 </div>
               ) : (
-                <div className="lg:col-span-5">
-                  <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                    {type === 'visit' ? 'Nom du visiteur / Titre' : 'Nom des acquéreurs'}
-                  </label>
-                  <Input
+                <div className="lg:col-span-6">
+                  <Field
+                    label={type === 'visit' ? 'Nom du visiteur / Titre' : 'Nom des acquéreurs'}
                     value={newEvent.title}
-                    onChange={(event) => setNewEvent({ ...newEvent, title: event.target.value })}
+                    onChange={(value) => setNewEvent({ ...newEvent, title: value, buyer_name: value })}
                     placeholder={type === 'visit' ? 'Ex. M. et Mme Dupont' : 'Ex. Offre M. Martin'}
-                    className={ADMIN_INPUT_CLASS}
                   />
                 </div>
               )}
 
-              <div className={cn("lg:col-span-3", type === 'milestone' ? "lg:col-span-3" : "lg:col-span-4")}>
-                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">
-                  Date prévue / effectuée
-                </label>
-                <Input
+              <div className="lg:col-span-3">
+                <Field
+                  label="Date"
                   type="date"
                   value={newEvent.event_date}
-                  onChange={(event) => setNewEvent({ ...newEvent, event_date: event.target.value })}
-                  className={ADMIN_INPUT_CLASS}
+                  onChange={(value) => setNewEvent({ ...newEvent, event_date: value })}
                 />
               </div>
 
@@ -1266,7 +1278,7 @@ function UnifiedEventWorkspace({
             </div>
 
             {/* Bottom bar: Visibility toggle & Submit button */}
-            <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between border-t border-border/40">
+            <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <label className="text-xs font-semibold text-muted-foreground shrink-0">Visibilité :</label>
                 <select
@@ -1280,23 +1292,22 @@ function UnifiedEventWorkspace({
               </div>
 
               <div className="flex items-center gap-2">
-                {isEditing && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={onCancelEdit}
-                    className="h-10 font-medium rounded-xl border-input hover:bg-accent px-4 text-xs"
-                  >
-                    <X className="mr-1.5 size-4" />
-                    Annuler
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancel}
+                  className="h-10 font-medium rounded-xl border-input hover:bg-accent px-4 text-xs"
+                >
+                  <X className="mr-1.5 size-4" />
+                  Annuler
+                </Button>
 
                 <Button
-                  onClick={() => onAdd(type)}
+                  onClick={handleAdd}
                   disabled={submitting}
                   className="h-10 font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs px-5 text-xs"
                 >
+
                   {submitting ? (
                     <Loader2 className="mr-1.5 size-4 animate-spin" />
                   ) : isEditing ? (
@@ -1315,147 +1326,39 @@ function UnifiedEventWorkspace({
         )}
 
         {/* Stepper Progress Bar for Plan de vente */}
-        {type === 'milestone' && events.length > 0 && (
-          <div className="rounded-2xl border bg-muted/30 p-4 space-y-2.5 shadow-2xs">
-            <div className="flex items-center justify-between text-xs font-bold">
-              <span className="text-foreground uppercase tracking-wider flex items-center gap-2">
-                <Rocket className="size-4 text-primary" />
-                Plan de vente — {events.filter(e => e.status === 'done').length} sur {events.length} étape{events.length > 1 ? 's' : ''} validée{events.length > 1 ? 's' : ''}
-              </span>
-              <span className="text-primary font-extrabold text-sm">
-                {Math.round((events.filter(e => e.status === 'done').length / events.length) * 100)}%
-              </span>
+        {type === 'milestone' ? (
+          events.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 p-8 text-center bg-card/40 space-y-2">
+              <Icon className="size-9 text-muted-foreground/50 mb-1" />
+              <p className="text-sm font-bold text-foreground">Aucune étape pour le moment</p>
+              <p className="text-xs text-muted-foreground max-w-sm">
+                Utilisez le formulaire ci-dessus pour ajouter des jalons au plan de vente.
+              </p>
             </div>
-            <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden border border-border/40">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 via-primary to-sky-500 transition-all duration-500 rounded-full"
-                style={{ width: `${Math.round((events.filter(e => e.status === 'done').length / events.length) * 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Bottom List / Timeline inside Section */}
-      <div className="mt-5 space-y-3">
-        {events.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 p-8 text-center bg-card/40 space-y-2">
-            <Icon className="size-9 text-muted-foreground/50 mb-1" />
-            <p className="text-sm font-bold text-foreground">Aucune donnée pour le moment</p>
-            <p className="text-xs text-muted-foreground max-w-sm">
-              Utilisez le formulaire ci-dessus pour ajouter des éléments à cette section.
-            </p>
-          </div>
-        ) : type === 'milestone' ? (
-          <div className="relative pl-7 space-y-4 pt-1 before:absolute before:left-3.5 before:top-4 before:bottom-4 before:w-0.5 before:bg-border/60">
-            {events.map((event, index) => {
-              const isDone = event.status === 'done' || event.status === 'accepted'
-              const isPending = event.status === 'pending'
-              const isBeingEdited = editingEventId === event.id
-              const { icon: MilestoneIcon, colorClass } = getMilestoneIcon(event.title)
-
-              return (
-                <div key={event.id} className="relative group">
-                  {/* Timeline node */}
-                  <div
-                    className={cn(
-                      "absolute -left-7 top-4 flex size-7 -translate-x-1/2 items-center justify-center rounded-full text-xs font-extrabold transition-all duration-200 ring-4 ring-card z-10",
-                      isDone
-                        ? "bg-emerald-500 text-white shadow-md shadow-emerald-500/30"
-                        : isPending
-                        ? "bg-primary text-primary-foreground animate-pulse shadow-md shadow-primary/30"
-                        : "bg-card text-muted-foreground border-2 border-border"
-                    )}
-                  >
-                    {isDone ? <CheckCircle2 className="size-4" /> : index + 1}
-                  </div>
-
-                  {/* Card content */}
-                  <div
-                    className={cn(
-                      "rounded-2xl border bg-card p-4 shadow-2xs transition-all hover:shadow-md hover:border-border/80 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
-                      isDone && "border-emerald-500/30 bg-emerald-500/[0.02]",
-                      isPending && "border-primary/50 bg-primary/[0.03] ring-1 ring-primary/30",
-                      isBeingEdited && "ring-2 ring-primary/40 border-primary bg-primary/5"
-                    )}
-                  >
-                    <div className="space-y-1.5 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className={cn("flex size-7 items-center justify-center rounded-xl border text-xs font-bold shrink-0", colorClass)}>
-                          <MilestoneIcon className="size-3.5" />
-                        </div>
-                        <span className="font-bold text-sm text-foreground">{event.title}</span>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "font-semibold text-xs",
-                            isDone && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600",
-                            isPending && "border-primary/30 bg-primary/10 text-primary animate-pulse",
-                            !isDone && !isPending && "border-amber-500/30 bg-amber-500/10 text-amber-600"
-                          )}
-                        >
-                          {isDone ? '✓ Terminé' : isPending ? '⏳ En cours' : 'À venir'}
-                        </Badge>
-                        {event.visible_to_client ? (
-                          <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-600 font-semibold text-xs">
-                            👁️ Visible client
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="border-muted-foreground/30 bg-muted text-muted-foreground font-semibold text-xs">
-                            🔒 Interne
-                          </Badge>
-                        )}
-                      </div>
-
-                      {event.description && <p className="text-xs text-muted-foreground leading-relaxed pl-9">{event.description}</p>}
-
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground font-medium pt-0.5 pl-9">
-                        {event.event_date && (
-                          <span>📅 {formatDate(event.event_date)}</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 shrink-0 justify-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(
-                          "h-8 text-xs font-semibold rounded-xl px-3",
-                          isDone ? "text-muted-foreground" : "text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
-                        )}
-                        onClick={() => onUpdate(event.id, { status: isDone ? 'todo' : 'done' })}
-                      >
-                        <CheckCircle2 className="mr-1.5 size-3.5" />
-                        {isDone ? 'Marquer à faire' : 'Valider l’étape'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className={cn(
-                          "h-8 w-8 text-muted-foreground hover:text-foreground rounded-lg",
-                          isBeingEdited && "bg-primary/10 text-primary"
-                        )}
-                        onClick={() => onEdit(event)}
-                        title="Modifier"
-                      >
-                        <Pencil className="size-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive rounded-lg"
-                        onClick={() => onDelete(event.id)}
-                        title="Supprimer"
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          ) : (
+            <MilestoneStepper
+              items={events}
+              editingId={editingEventId}
+              onUpdateStatus={(id, status) => onUpdate(id, { status })}
+              onEdit={(item) => {
+                const ev = events.find((e) => e.id === item.id)
+                if (ev) onEdit(ev)
+              }}
+              onDelete={onDelete}
+              formatDate={formatDate}
+            />
+          )
         ) : (
+          <div className="mt-5 space-y-3">
+            {events.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/70 p-8 text-center bg-card/40 space-y-2">
+                <Icon className="size-9 text-muted-foreground/50 mb-1" />
+                <p className="text-sm font-bold text-foreground">Aucune donnée pour le moment</p>
+                <p className="text-xs text-muted-foreground max-w-sm">
+                  Utilisez le formulaire ci-dessus pour ajouter des éléments à cette section.
+                </p>
+              </div>
+            ) : (
           events.map((event) => {
             const isDone = event.status === 'done' || event.status === 'accepted'
             const isBeingEdited = editingEventId === event.id
@@ -1535,6 +1438,7 @@ function UnifiedEventWorkspace({
           })
         )}
       </div>
+    )}
     </Section>
   )
 }

@@ -41,10 +41,13 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
   try {
     const { id } = await props.params
 
+    // Ordre explicite : il fixe l'ordre des titulaires dans le titre du projet.
     const { data: links, error } = await supabaseAdmin
       .from('project_contacts')
-      .select('id, contact_id, role')
+      .select('id, contact_id, role, is_titulaire')
       .or(`opportunity_id.eq.${id},buyer_criteria_id.eq.${id}`)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
 
     if (error) {
       console.error('[API /market/projects/[id]/contacts] GET error:', error)
@@ -67,6 +70,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
           .map((link) => ({
             link_id: link.id,
             role: link.role,
+            is_titulaire: link.is_titulaire === true,
             contact: contactById.get(link.contact_id) ?? null,
           }))
           .filter((entry) => entry.contact !== null),
@@ -92,23 +96,28 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
     const kind = await resolveProjectKind(id)
 
-    const { data: existing } = await supabaseAdmin
+    const { data: siblings } = await supabaseAdmin
       .from('project_contacts')
-      .select('id')
-      .eq('contact_id', contactId)
+      .select('id, contact_id')
       .or(`opportunity_id.eq.${id},buyer_criteria_id.eq.${id}`)
-      .maybeSingle()
 
-    if (existing) {
+    if ((siblings ?? []).some((link) => link.contact_id === contactId)) {
       return NextResponse.json({ error: 'Ce contact est déjà rattaché au projet' }, { status: 409 })
     }
+
+    // Titulaire = figure sur le titre de propriete (vente) ou signera l'acte
+    // (achat). Seuls les titulaires composent le titre affiche du projet, d'ou
+    // le defaut : le premier contact rattache l'est, les suivants demandent un
+    // geste explicite pour que le notaire ou le mandataire n'y entre pas seul.
+    const isTitulaire =
+      typeof body.is_titulaire === 'boolean' ? body.is_titulaire : (siblings ?? []).length === 0
 
     const link = kind === 'achat' ? { buyer_criteria_id: id } : { opportunity_id: id }
 
     const { data: created, error } = await supabaseAdmin
       .from('project_contacts')
-      .insert({ contact_id: contactId, role, ...link })
-      .select('id, contact_id, role')
+      .insert({ contact_id: contactId, role, is_titulaire: isTitulaire, ...link })
+      .select('id, contact_id, role, is_titulaire')
       .single()
 
     if (error || !created) {
@@ -119,6 +128,48 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ link: created }, { status: 201 })
   } catch (error) {
     console.error('[API /market/projects/[id]/contacts] POST error:', error)
+    return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
+  }
+}
+
+/**
+ * PATCH : designer ou retirer un titulaire apres coup, sans avoir a detacher
+ * puis rattacher le contact. Le titre du projet suit a la lecture suivante.
+ */
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await props.params
+    const body = await req.json()
+    const contactId = typeof body.contact_id === 'string' ? body.contact_id : null
+    const isTitulaire = typeof body.is_titulaire === 'boolean' ? body.is_titulaire : null
+
+    if (!contactId || isTitulaire === null) {
+      return NextResponse.json(
+        { error: 'contact_id et is_titulaire sont requis' },
+        { status: 400 }
+      )
+    }
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('project_contacts')
+      .update({ is_titulaire: isTitulaire })
+      .eq('contact_id', contactId)
+      .or(`opportunity_id.eq.${id},buyer_criteria_id.eq.${id}`)
+      .select('id, contact_id, role, is_titulaire')
+      .maybeSingle()
+
+    if (error) {
+      console.error('[API /market/projects/[id]/contacts] PATCH error:', error)
+      return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 })
+    }
+
+    if (!updated) {
+      return NextResponse.json({ error: 'Contact non rattaché à ce projet' }, { status: 404 })
+    }
+
+    return NextResponse.json({ link: updated }, { status: 200 })
+  } catch (error) {
+    console.error('[API /market/projects/[id]/contacts] PATCH error:', error)
     return NextResponse.json({ error: 'Erreur interne' }, { status: 500 })
   }
 }

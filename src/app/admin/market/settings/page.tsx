@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   BrainCircuit,
+  Calendar,
   Clock3,
   Import,
   Loader2,
@@ -23,9 +24,28 @@ import { AiIntegrationsSettings } from './AiIntegrationsSettings'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { PageHeader, PageLayout, PageSection } from '@/components/pro'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { LiquidTemplateEditor, PageHeader, PageLayout, PageSection } from '@/components/pro'
 import { cn } from '@/lib/utils'
+
+
+import {
+  DEFAULT_RDV_TEMPLATES,
+  LIQUID_VARIABLES,
+  MEETING_TYPES,
+  parseRdvTemplates,
+  renderLiquidTemplate,
+  type RdvTemplatesMap,
+} from '@/lib/rdv-templates'
+
 
 type CommuneResult = {
   nom: string
@@ -127,14 +147,17 @@ type SyncTarget = {
   inseeCode: string | null
 }
 
-type SettingsSection = 'stream_estate' | 'ia' | 'integrations' | 'profil'
+type SettingsSection = 'stream_estate' | 'ia' | 'integrations' | 'rdv_templates' | 'profil'
 
 const SECTIONS: Array<{ id: SettingsSection; label: string; icon: any; hint: string }> = [
   { id: 'stream_estate', label: 'Stream Estate', icon: WalletCards, hint: 'Communes, zones & consommation API' },
   { id: 'ia', label: 'Intelligence Artificielle', icon: BrainCircuit, hint: 'Moteurs IA, DeepSeek, OpenAI...' },
   { id: 'integrations', label: 'Intégrations & Connecteurs', icon: ShieldCheck, hint: 'Google, Granola, Telegram' },
+  { id: 'rdv_templates', label: 'Modèles de Rendez-vous & SMS', icon: Calendar, hint: 'Messages automatiques & Liquid syntax' },
+
   { id: 'profil', label: 'Informations personnelles', icon: UserRound, hint: 'Profil & contact' },
 ]
+
 
 const PROPERTY_TYPE_OPTIONS = [
   { value: 0, label: 'Appartement' },
@@ -243,6 +266,12 @@ function SettingsPageContent() {
   const [personalTitle, setPersonalTitle] = useState(PERSONAL_DEFAULTS.title)
   const [personalSaving, setPersonalSaving] = useState(false)
 
+  const [rdvTemplates, setRdvTemplates] = useState<RdvTemplatesMap>(DEFAULT_RDV_TEMPLATES)
+  const [rdvTemplatesSaving, setRdvTemplatesSaving] = useState(false)
+  const [selectedTemplateType, setSelectedTemplateType] = useState<string>('rendez_vous_r1')
+
+
+
   const budget = stats?.stream_estate_budget
   const budgetBlocked = Boolean(budget && budget.estimated_balance_eur <= budget.min_balance_eur)
   const defaultMaxItems = budget?.max_items_per_sync ?? budget?.max_requests_per_sync ?? 30
@@ -293,7 +322,7 @@ function SettingsPageContent() {
     const req = searchParams.get('section')
     if (req === 'import' || req === 'communes' || req === 'consommation' || req === 'stream_estate') {
       setSection('stream_estate')
-    } else if (req === 'ia' || req === 'integrations' || req === 'profil') {
+    } else if (req === 'ia' || req === 'integrations' || req === 'rdv_templates' || req === 'profil') {
       setSection(req)
     }
   }, [searchParams])
@@ -316,12 +345,38 @@ function SettingsPageContent() {
         setPersonalEmail(String(settings.personal_email ?? PERSONAL_DEFAULTS.email))
         setPersonalPhone(String(settings.personal_phone ?? PERSONAL_DEFAULTS.phone))
         setPersonalTitle(String(settings.personal_title ?? PERSONAL_DEFAULTS.title))
+
+        if (settings.rdv_templates) {
+          setRdvTemplates(parseRdvTemplates(settings.rdv_templates))
+        }
       })
       .catch((err) => {
         console.error('Erreur chargement app_settings:', err)
         toast.error('Impossible de charger les réglages')
       })
   }, [])
+
+  async function saveRdvTemplates() {
+    setRdvTemplatesSaving(true)
+    try {
+      const res = await fetch('/api/market/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rdv_templates: JSON.stringify(rdvTemplates),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || data.success === false) throw new Error(data.error ?? 'Erreur API')
+      toast.success('Modèles de RDV & SMS sauvegardés')
+    } catch (err) {
+      console.error('Erreur sauvegarde rdv_templates:', err)
+      toast.error('Impossible de sauvegarder les modèles de RDV')
+    } finally {
+      setRdvTemplatesSaving(false)
+    }
+  }
+
 
   function searchCommunes(value: string) {
     setCommuneQuery(value)
@@ -988,6 +1043,214 @@ function SettingsPageContent() {
             {section === 'ia' ? <AiIntegrationsSettings mode="ia" /> : null}
 
             {section === 'integrations' ? <AiIntegrationsSettings mode="integrations" /> : null}
+
+            {section === 'rdv_templates' ? (
+              <div className="space-y-6">
+                {/* Header Card */}
+                <div className="rounded-2xl border bg-card p-6 shadow-xs space-y-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-base font-bold text-foreground">Modèles de Rendez-vous & Textes SMS (Liquid)</h2>
+                      <p className="text-xs text-muted-foreground font-medium mt-0.5">
+                        Configurez les intitulés par défaut et les textes de rappel SMS envoyés aux clients selon le type de rendez-vous.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={saveRdvTemplates}
+                      disabled={rdvTemplatesSaving}
+                      className="rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-primary-foreground px-5 shadow-2xs cursor-pointer shrink-0"
+                    >
+                      {rdvTemplatesSaving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Save className="mr-1.5 size-4" />}
+                      Enregistrer les modèles
+                    </Button>
+                  </div>
+
+                  {/* Liquid Cheat Sheet */}
+                  <div className="rounded-xl border border-border/80 bg-muted/30 p-4 space-y-2">
+                    <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Variables Liquid disponibles dans vos SMS :
+                    </span>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {LIQUID_VARIABLES.map((v) => (
+                        <div key={v.tag} className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1 text-xs">
+                          <code className="font-mono font-bold text-primary">{v.tag}</code>
+                          <span className="text-muted-foreground">• {v.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dropdown Selector for Rendez-vous Type */}
+                <div className="rounded-2xl border bg-card p-5 shadow-xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Type de Rendez-vous à configurer
+                    </Label>
+                    <p className="text-xs text-muted-foreground font-medium">
+                      Sélectionnez la catégorie ci-contre pour afficher et éditer son modèle.
+                    </p>
+                  </div>
+                  <Select value={selectedTemplateType} onValueChange={setSelectedTemplateType}>
+                    <SelectTrigger className="h-10 w-full sm:w-80 rounded-xl bg-background border-input font-bold text-xs cursor-pointer">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEETING_TYPES.map((t) => {
+                        const Icon = t.icon
+                        return (
+                          <SelectItem key={t.value} value={t.value} className="text-xs font-semibold cursor-pointer">
+                            <div className="flex items-center gap-2">
+                              <Icon className="size-4 text-primary shrink-0" />
+                              <span>{t.label}</span>
+                            </div>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Active Selected Template Card */}
+                {(() => {
+                  const type = MEETING_TYPES.find((t) => t.value === selectedTemplateType) || MEETING_TYPES[0]
+                  const Icon = type.icon
+                  const currentTpl = rdvTemplates[type.value] ?? DEFAULT_RDV_TEMPLATES[type.value] ?? { title: type.label, sms_template: '' }
+                  const samplePreview = renderLiquidTemplate(currentTpl.sms_template, {
+                    client: { first_name: 'Jean', last_name: 'Dupont' },
+                    rdv: { date: '15 mars 2026', time: '14h30', type: type.label },
+                    property: { address: '12 rue des Vignes' },
+                    agent: { name: personalFullName || 'Alexandre Lopez' },
+                  })
+
+                  return (
+                    <div key={type.value} className="rounded-2xl border bg-card p-6 shadow-xs space-y-5">
+                      <div className="flex items-center gap-3 border-b pb-3">
+                        <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                          <Icon className="size-5" />
+                        </div>
+                        <h3 className="text-sm font-bold text-foreground">{type.label}</h3>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Intitulé par défaut du Rendez-vous
+                          </Label>
+                          <Input
+                            value={currentTpl.title}
+                            onChange={(e) => {
+                              const newTitle = e.target.value
+                              setRdvTemplates((prev) => ({
+                                ...prev,
+                                [type.value]: { ...currentTpl, title: newTitle },
+                              }))
+                            }}
+                            className="h-10 rounded-xl bg-background text-xs font-semibold"
+                          />
+                        </div>
+
+                        <LiquidTemplateEditor
+                          label="Texte du SMS de rappel (Liquid)"
+                          value={currentTpl.sms_template}
+                          onChange={(newSms) => {
+                            setRdvTemplates((prev) => ({
+                              ...prev,
+                              [type.value]: { ...currentTpl, sms_template: newSms },
+                            }))
+                          }}
+                          rows={5}
+                          clientData={{
+                            first_name: 'Jean',
+                            last_name: 'Dupont',
+                            date: '15 mars 2026',
+                            time: '14h30',
+                            type: type.label,
+                            address: '12 rue des Vignes',
+                            agent_name: personalFullName || 'Alexandre Lopez',
+                          }}
+                        />
+
+                        {/* Dual SMS Reminders Settings */}
+                        <div className="rounded-xl border bg-muted/20 p-4 space-y-4">
+                          <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            Automatisation des envois SMS (2 envois prévus)
+                          </span>
+
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {/* Rappel / Confirmation 1 */}
+                            <div className="space-y-1.5">
+                              <Label className="text-xs font-semibold text-foreground">
+                                SMS 1 : Envoi de confirmation
+                              </Label>
+                              <select
+                                value={currentTpl.sms_reminder_1_trigger || 'immediate'}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setRdvTemplates((prev) => ({
+                                    ...prev,
+                                    [type.value]: { ...currentTpl, sms_reminder_1_trigger: val },
+                                  }))
+                                }}
+                                className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-semibold cursor-pointer"
+                              >
+                                <option value="immediate">Immédiat (Dès la validation du rendez-vous dans l'app)</option>
+                                <option value="24h">24 heures avant le rendez-vous</option>
+                                <option value="48h">48 heures avant le rendez-vous</option>
+                              </select>
+                            </div>
+
+                            {/* Rappel 2 */}
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={currentTpl.sms_reminder_2_enabled ?? true}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked
+                                      setRdvTemplates((prev) => ({
+                                        ...prev,
+                                        [type.value]: { ...currentTpl, sms_reminder_2_enabled: checked },
+                                      }))
+                                    }}
+                                    className="rounded size-3.5 border-input accent-primary cursor-pointer"
+                                  />
+                                  <span>SMS 2 : Rappel automatique</span>
+                                </Label>
+                              </div>
+                              <select
+                                disabled={!currentTpl.sms_reminder_2_enabled}
+                                value={currentTpl.sms_reminder_2_trigger || 'eve_18h'}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setRdvTemplates((prev) => ({
+                                    ...prev,
+                                    [type.value]: { ...currentTpl, sms_reminder_2_trigger: val },
+                                  }))
+                                }}
+                                className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                              >
+                                <option value="eve_18h">La veille du rendez-vous à 18h00 (Recommandé)</option>
+                                <option value="2h">2 heures avant le rendez-vous</option>
+                                <option value="4h">4 heures avant le rendez-vous</option>
+                                <option value="24h">24 heures avant le rendez-vous</option>
+                              </select>
+                            </div>
+
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>
+                  )
+                })()}
+
+
+              </div>
+            ) : null}
+
+
 
             {section === 'profil' ? (
               <div className="rounded-2xl border bg-card p-6 shadow-xs space-y-6">

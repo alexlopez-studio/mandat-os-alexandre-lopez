@@ -22,3 +22,7 @@ export { StatusPill } from './status-pill'
 export { ToggleChip } from './toggle-chip'
 export { ViewModeToggle } from './view-mode-toggle'
 export type { ViewMode } from './view-mode-toggle'
+export { MilestoneStepper } from './milestone-stepper'
+export type { MilestoneItem, MilestoneStepperProps } from './milestone-stepper'
+export { LiquidTemplateEditor } from './liquid-template-editor'
+

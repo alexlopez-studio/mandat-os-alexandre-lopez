@@ -221,7 +221,7 @@ export function PropertiesTable({
       if (!res.ok) throw new Error('Erreur lors de la création de l’opportunité')
       const json = await res.json()
       toast.success('Projet créé avec succès !')
-      router.push(`/admin/market/opportunities/${json.id}`)
+      router.push(`/admin/market/projects/${json.id}`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Création impossible')
     } finally {
@@ -540,7 +540,7 @@ export function PropertiesTable({
                                 )}
                                 {prop.opportunity ? (
                                   <DropdownMenuItem asChild className="rounded-lg text-xs font-bold py-2 cursor-pointer">
-                                    <Link href={`/admin/market/opportunities/${prop.opportunity.id}`}>
+                                    <Link href={`/admin/market/projects/${prop.opportunity.id}`}>
                                       <Building2 className="size-4 mr-2 text-amber-500" /> Ouvrir le projet
                                     </Link>
                                   </DropdownMenuItem>

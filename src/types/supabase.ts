@@ -138,6 +138,7 @@ export type Database = {
           opportunity_id: string | null
           buyer_criteria_id: string | null
           role: string
+          is_titulaire: boolean
           created_at: string
           updated_at: string
         }
@@ -147,6 +148,7 @@ export type Database = {
           opportunity_id?: string | null
           buyer_criteria_id?: string | null
           role: string
+          is_titulaire?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -156,6 +158,7 @@ export type Database = {
           opportunity_id?: string | null
           buyer_criteria_id?: string | null
           role?: string
+          is_titulaire?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -1077,6 +1080,7 @@ export type Database = {
         Row: {
           id: string
           kind: 'vente' | 'achat'
+          reference: string
           title: string
           stage: string
           priority: string
@@ -1125,6 +1129,8 @@ export type Database = {
         Insert: {
           id?: string
           kind: 'vente' | 'achat'
+          /** Attribuee par le trigger `set_project_reference` (migration 048). */
+          reference?: string
           title: string
           stage: string
           priority?: string
@@ -1173,6 +1179,7 @@ export type Database = {
         Update: {
           id?: string
           kind?: 'vente' | 'achat'
+          reference?: string
           title?: string
           stage?: string
           priority?: string

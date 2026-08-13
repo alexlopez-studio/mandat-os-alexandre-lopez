@@ -23,12 +23,13 @@ export function ReportToolbar({
       <div className="mx-auto flex max-w-[210mm] items-center justify-between gap-4 px-4 py-3">
         <div className="min-w-0">
           <Link
-            href={`/admin/market/opportunities/${opportunityId}`}
+            href={`/admin/market/projects/${opportunityId}`}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 transition hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Retour à l&apos;opportunité
+            Retour au projet
           </Link>
+
           <h1 className="truncate text-sm font-bold text-white">{title}</h1>
         </div>
 

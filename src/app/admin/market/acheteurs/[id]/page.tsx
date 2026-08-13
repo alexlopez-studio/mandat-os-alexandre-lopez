@@ -239,7 +239,7 @@ export default function BuyerProjectDetailPage() {
       const res = await fetch(`/api/market/buyers/${idParam}`)
       if (!res.ok) {
         toast.error('Projet d’achat non trouvé')
-        router.push('/admin/market/opportunities?tab=acquereurs')
+        router.push('/admin/market/projects?tab=acquereurs')
         return
       }
 
@@ -454,18 +454,17 @@ export default function BuyerProjectDetailPage() {
 
   const formattedTitle = useMemo(() => {
     if (!buyer) return 'Chargement...'
-    const contactNames = contacts.map((c) => c.last_name || c.name)
-    const mainContactName = contacts[0]?.name || null
     return (
       buyer.display_title ||
       buildProjectTitle({
-        contactLastNames: contactNames,
-        contactName: mainContactName,
-        propertyType: buyer.type_bien,
+        titulaireLastNames: contacts
+          .filter((c) => c.is_titulaire)
+          .map((c) => c.last_name || c.name),
+        city: (form.communes ?? [])[0] ?? null,
       }) ||
       'Recherche acquéreur'
     )
-  }, [buyer, contacts])
+  }, [buyer, contacts, form.communes])
 
   const sectorLabel = useMemo(() => {
     if (form.communes.length > 0) return form.communes.join(', ')
@@ -672,7 +671,7 @@ export default function BuyerProjectDetailPage() {
       const res = await fetch(`/api/market/buyers/${projectId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Erreur suppression')
       toast.success('Projet d’achat supprimé')
-      router.push('/admin/market/opportunities?tab=acquereurs')
+      router.push('/admin/market/projects?tab=acquereurs')
     } catch (e) {
       toast.error('Erreur lors de la suppression')
     } finally {
@@ -723,7 +722,7 @@ export default function BuyerProjectDetailPage() {
         {/* Navigation retour */}
         <div>
           <Link
-            href="/admin/market/opportunities?tab=acquereurs"
+            href="/admin/market/projects?tab=acquereurs"
             className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="size-4" /> Retour aux projets
@@ -741,7 +740,13 @@ export default function BuyerProjectDetailPage() {
               <div className="text-2xl font-bold text-foreground leading-tight">
                 {formattedTitle}
               </div>
+              {/* Le titre ne porte que la premiere commune : le secteur complet
+                  reste utile, et la reference identifie le dossier. */}
               <p className="text-sm font-medium text-muted-foreground mt-0.5">
+                <span className="font-mono tabular-nums">
+                  {(buyer as any)?.reference ?? '—'}
+                </span>
+                {' · '}
                 {sectorLabel}
               </p>
             </div>
@@ -1235,7 +1240,8 @@ export default function BuyerProjectDetailPage() {
                       onClick={() => openEventModal('meeting')}
                       className="h-8 text-xs font-semibold rounded-lg"
                     >
-                      <Calendar className="mr-2 size-3.5 text-amber-600" /> + RDV
+                      <Calendar className="mr-2 size-3.5 text-amber-600" /> + Rendez-vous
+
                     </Button>
                   </div>
 
