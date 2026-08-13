@@ -4,6 +4,42 @@ Audit realise le 13/08/2026, apres la suppression du Radar MandatFinder.
 Objectif : ne garder que les pages reellement en service, reduire la surface de
 code a maintenir et alleger les bundles client.
 
+## Avancement
+
+| Lot | Etat |
+|-----|------|
+| 1 — dependances mortes | **fait** (43 -> 22 paquets) |
+| 2 — composants du template shadcn | **fait** |
+| 3 — pages injoignables | **partiel** : `/app/zones` supprimee. `/app/matching` et les redirections `/app/clients` conservees (elles repondent encore). |
+| 4 — pipeline MandatFinder inerte | **fait** |
+| 5 — doublon espace client | non fait, arbitrage produit en attente |
+| 6 — routes API sans appelant | non fait, verification des logs Vercel requise |
+| 7 — pages hors menu | non fait, decision produit en attente |
+| 8 — divers | **fait** (libs orphelines, `db.sql`, doublon de tests vitest) |
+
+Total supprime : **~7 900 lignes**, sans modifier une seule fonctionnalite
+atteignable depuis l'interface. Verifie par `tsc`, `npm test` et `npm run build`.
+
+Deux elements decouverts pendant l'execution, absents de l'audit initial :
+
+- la refonte visuelle avait laisse derriere elle ses composants remplaces
+  (`KanbanBoard`, `BuyerKanbanBoard`, `SellerOpportunityTable`,
+  `BuyerOpportunityTable`, `AcheteursListClient`, `VendeursAContacter`,
+  `SyncDailyStats`, `MandatKpiCards`) — ~2 500 lignes ;
+- `src/hooks/` contenait `use-mobile.ts` **et** `use-mobile.tsx`, le second etant
+  un doublon orphelin.
+
+Deux pertes fonctionnelles heritees, a arbitrer :
+
+- **purge des biens orphelins** : l'action n'existait que dans `/app/zones`,
+  page deja injoignable avant ce nettoyage. L'API
+  `DELETE /api/market/properties?scope=orphans` est conservee, il suffit de la
+  recabler dans les parametres si l'action est encore utile.
+- **« Vendeurs a contacter »** : ce bloc du dashboard n'etait plus rendu depuis
+  le passage a `DashboardCockpit`. Le composant est supprime, mais le scoring
+  qui l'alimentait (`mandate_score` / `mandate_phase` sur `market_properties`)
+  est intact et reste affiche dans `/app/properties`.
+
 ## Etat des lieux mesure
 
 Build de reference (`npm run build`, apres suppression du Radar) :
