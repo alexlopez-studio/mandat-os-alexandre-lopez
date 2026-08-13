@@ -160,29 +160,34 @@ MandatFinder doit revivre un jour, mieux vaut le reconstruire sur
 
 ## Lot 5 — Doublon de l'espace client
 
-`src/app/espace-client/` contient 3 724 lignes (dont `portal-view.tsx` a lui
-seul : 2 983) **mais aucune `page.tsx`** : la route `/espace-client` renvoie un
-404. Le portail vendeur vit desormais dans un depot separe
-(`espace-client-alexandre-lopez`, port 3001, declare dans `.claude/launch.json`).
+Il ne s'agit **pas** de l'espace client en service. Celui-ci vit dans le depot
+`espace-client-alexandre-lopez` (application Vite, deployee sur
+`https://espace.alexandrelopez.fr`), et c'est bien vers lui que pointent tous
+les liens envoyes aux vendeurs — voir `src/lib/client-portal-url.ts`.
 
-Ces fichiers ne survivent que pour une chose : la page d'apercu admin
-`/app/clients/[id]/preview`, qui importe `ClientPortalView`. C'est elle qui
-explique ses 258 kB de First Load JS, et elle tire `framer-motion` et `leaflet`
-avec elle.
+Le duplicata, c'est `src/app/espace-client/` **dans ce depot** : 3 724 lignes
+(dont `portal-view.tsx` : 2 983), version Next.js du portail **figee au
+16/07/2026**, laissee sur place lors de l'extraction vers le depot separe. Elle
+n'a aucune `page.tsx`, donc la route `/espace-client` de Mandat OS renvoie 404.
 
-Trois options, par ordre de preference :
+Les deux versions ont deja diverge : le depot separe a depuis gagne les sections
+comparables (3 sous-onglets), concurrence, marche, iad et l'affichage de la date
+de signature du mandat. Aucune de ces evolutions n'existe dans la copie locale.
 
-1. **Supprimer la page d'apercu et le dossier** — l'apercu se fait en ouvrant le
-   vrai portail sur le lien client (bouton « lien client » deja present dans la
-   fiche opportunite). -3 700 lignes, -258 kB sur une route.
-2. **Remplacer l'apercu par une iframe** vers le portail du depot separe.
-   Garde la fonctionnalite, supprime le duplicata de code.
-3. **Ne rien faire** et accepter que le portail existe en deux exemplaires qui
-   vont diverger.
+Ce que cette copie fait vivre : la page `/app/clients/[id]/preview`, qui importe
+`ClientPortalView` et pese 258 kB de First Load JS en tirant `framer-motion` et
+`leaflet`. Or **aucun bouton de l'application ne mene a cette page** :
+`DossierWorkspace` et la fiche projet passent tous deux par
+`/api/market/clients/[id]/preview-link`, qui renvoie une URL d'apercu sur le
+**vrai** portail (`espace.alexandrelopez.fr/preview?token=...`). La page locale
+n'est donc atteignable qu'en tapant son URL a la main, et elle montre une
+version obsolete du portail.
 
-C'est le seul lot qui demande un vrai arbitrage produit de ta part.
+Recommandation : supprimer `src/app/admin/market/clients/[id]/preview/` et
+`src/app/espace-client/`. -3 700 lignes, une route de moins, et surtout la fin
+d'un apercu qui ment sur ce que le client voit reellement.
 
-**Effort** : 30 min (option 1), 2 h (option 2).
+**Effort** : 30 min.
 
 ---
 
@@ -194,6 +199,15 @@ categories :
 **Legitimes malgre l'absence d'appelant interne — a garder :**
 `/api/jobs/sync-zones` (cron Vercel), `/api/integrations/google/oauth/callback`,
 `/api/integrations/telegram/webhook`, `/api/market/webhooks/stream-estate`.
+
+**Correction du 13/08/2026 — appelees par l'app espace-client, a garder
+imperativement :** `/api/client-portal/dossier` et
+`/api/dev/client-portal-test-dossiers`. Le depot
+`espace-client-alexandre-lopez` les appelle via `VITE_MANDAT_OS_API_URL`
+(voir `src/lib/mandat-os-portal.ts` cote portail). L'analyse statique de ce
+depot ne pouvait pas les voir. En particulier, la remarque ci-dessous sur
+`/api/dev/*` est fausse pour cette route : c'est le mode « dossiers de test »
+du portail, pas un reliquat de developpement.
 
 **Mortes avec le pipeline MandatFinder (lot 4) :**
 `/api/jobs/analyze-listings`, `/api/jobs/import-stream-estate`.
