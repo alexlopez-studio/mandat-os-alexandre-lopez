@@ -12,12 +12,12 @@ code a maintenir et alleger les bundles client.
 | 2 — composants du template shadcn | **fait** |
 | 3 — pages injoignables | **partiel** : `/app/zones` supprimee. `/app/matching` et les redirections `/app/clients` conservees (elles repondent encore). |
 | 4 — pipeline MandatFinder inerte | **fait** |
-| 5 — doublon espace client | non fait, arbitrage produit en attente |
+| 5 — doublon espace client | **fait** (-3 773 lignes) |
 | 6 — routes API sans appelant | non fait, verification des logs Vercel requise |
 | 7 — pages hors menu | non fait, decision produit en attente |
 | 8 — divers | **fait** (libs orphelines, `db.sql`, doublon de tests vitest) |
 
-Total supprime : **~7 900 lignes**, sans modifier une seule fonctionnalite
+Total supprime : **~11 700 lignes**, sans modifier une seule fonctionnalite
 atteignable depuis l'interface. Verifie par `tsc`, `npm test` et `npm run build`.
 
 Deux elements decouverts pendant l'execution, absents de l'audit initial :
