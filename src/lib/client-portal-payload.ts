@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { loadAdminClientDossier } from '@/lib/market/client-admin'
+import { mapSellerActions, type SellerAction } from '@/lib/market/seller-actions'
+import { buildSellerMilestones, type SellerMilestone } from '@/lib/market/seller-milestones'
+import { isSalesFollowUpStage } from '@/lib/market/seller-stages'
 import { supabaseAdmin } from '@/lib/supabase'
 import type { Database, Json } from '@/types/supabase'
 
@@ -23,6 +26,17 @@ export type ClientPortalPayload = {
   sales_follow_up: {
     status: 'teaser' | 'active'
   }
+  /**
+   * Statut du projet : jalons linéaires projetés depuis le pipeline
+   * (`seller-milestones`). Un seul en cours à la fois, jamais de retour arrière.
+   */
+  sales_steps: SellerMilestone[]
+  /**
+   * Actions de préparation du mandat (`seller-actions`) : parallèles au statut,
+   * chacune son calendrier. Volontairement séparées des jalons — les ranger
+   * dans la chronologie les faisait passer pour des étapes séquentielles.
+   */
+  actions: SellerAction[]
   mandate_stage: string | null
   profile: Pick<ClientProfile, 'id' | 'email' | 'first_name' | 'last_name' | 'phone'>
   dossier: Pick<
@@ -133,6 +147,15 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
     sales_follow_up: {
       status: isSalesFollowUpActive(detail.opportunity?.stage) ? 'active' : 'teaser',
     },
+    sales_steps: buildSellerMilestones({
+      stage: detail.opportunity?.stage,
+      mandateSignedAt: (detail.dossier as { mandate_signed_at?: string | null }).mandate_signed_at,
+      estimationPublished: estimation.status === 'published',
+      estimationPublishedAt: estimation.published_at,
+    }),
+    actions: mapSellerActions(
+      detail.events.filter((event) => event.type === 'action' && event.visible_to_client)
+    ),
     mandate_stage: detail.opportunity?.stage ?? null,
     profile: {
       id: profile.id,
@@ -182,9 +205,10 @@ function toPayload(detail: Awaited<ReturnType<typeof loadAdminClientDossier>>): 
   }
 }
 
-function isSalesFollowUpActive(stage: string | null | undefined) {
-  return stage === 'Mandat signé' || stage === 'Vendu'
-}
+// La règle vit dans `seller-stages` : elle raisonne sur l'ordre du parcours et
+// non sur une liste littérale de stades, qui laissait un trou pendant toute la
+// commercialisation.
+const isSalesFollowUpActive = isSalesFollowUpStage
 
 function textValue(...values: Array<Json | string | null | undefined>) {
   for (const value of values) {

@@ -57,7 +57,7 @@ import {
 } from 'lucide-react'
 
 import { toast } from 'sonner'
-import { DeadlineCalendar, LiquidTemplateEditor, ProjectContactDialog, StatusPill, ToggleChip, type DeadlineItem } from '@/components/pro'
+import { DeadlineCalendar, LiquidTemplateEditor, MandateActionsPanel, ProjectContactDialog, StatusPill, ToggleChip, type DeadlineItem } from '@/components/pro'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -2435,7 +2435,11 @@ export default function OpportunityDetailPage() {
         <TabsContent value="dossier">
           <div className="space-y-5">
             {opportunity.client_dossier ? (
-              <DossierWorkspace dossierId={opportunity.client_dossier.id} opportunityId={opportunity.id} />
+              <>
+                {/* Paralleles au statut : elles ne rentrent pas dans le stepper. */}
+                <MandateActionsPanel dossierId={opportunity.client_dossier.id} />
+                <DossierWorkspace dossierId={opportunity.client_dossier.id} opportunityId={opportunity.id} />
+              </>
             ) : (
               <section className="rounded-xl border bg-card p-8 text-center">
               <FolderOpen className="mx-auto size-8 text-muted-foreground" />

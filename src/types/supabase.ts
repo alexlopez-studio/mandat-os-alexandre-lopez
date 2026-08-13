@@ -69,6 +69,8 @@ export type ClientDocumentStatus =
 
 export type ClientDossierEventType =
   | 'milestone' | 'visit' | 'offer' | 'note' | 'document' | 'system'
+  /** Preparation du mandat, en parallele du statut du projet (migration 049). */
+  | 'action'
 
 // ── Liste Chaude (réseau / bouche-à-oreille) ───────────────
 

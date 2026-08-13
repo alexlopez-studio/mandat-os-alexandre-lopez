@@ -4,7 +4,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 import type { ClientDossierEventType } from '@/types/supabase'
 
 type RouteContext = { params: Promise<{ id: string }> }
-const VALID_TYPES = new Set(['milestone', 'visit', 'offer', 'note', 'document', 'system'])
+// `action` : preparation du mandat, en parallele du statut (migration 049).
+const VALID_TYPES = new Set(['milestone', 'visit', 'offer', 'note', 'document', 'system', 'action'])
 
 const VALID_DB_STATUSES = new Set(['todo', 'done', 'blocked', 'info'])
 
