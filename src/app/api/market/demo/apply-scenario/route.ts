@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
         dossierTitle: dossier?.title ?? null,
         scenario,
         scenarioLabel: DEMO_SCENARIO_LABELS[scenario as DemoScenario],
-        previewUrl: buildClientPortalPreviewUrl(previewToken),
+        previewUrl: buildClientPortalPreviewUrl(previewToken, req),
       },
     })
   } catch (err) {

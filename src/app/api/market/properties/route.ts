@@ -5,6 +5,9 @@ import { scoreMarketProperty, type PriceHistoryRow } from '@/lib/market/mandate-
 import { buildZoneMedians, undervaluationPct, zoneKey } from '@/lib/market/zone-valuation'
 import { propertyThumbnailUrl } from '@/lib/market/property-thumbnail'
 
+/** Statuts qui sortent un bien du marché : exclus des listes par défaut. */
+const OFF_MARKET_STATUSES = ['expired', 'removed', 'sold', 'vendu', 'duplicate']
+
 /**
  * GET /api/market/properties
  * Retourne la liste des biens filtrée.
@@ -42,8 +45,12 @@ export async function GET(req: NextRequest) {
     }
     if (propertyType) query = query.eq('property_type', propertyType)
     if (dpe) query = query.eq('dpe', dpe)
-    if (status) query = query.eq('status', status)
-    if (!status) query = query.neq('status', 'duplicate')
+    // Par défaut on ne montre que le marché vivant : les biens retirés ou vendus
+    // restent en base pour l'historique mais sortent des listes de prospection.
+    // `status=expired` (ou `status=all`) permet de les consulter explicitement.
+    if (status && status !== 'all') query = query.eq('status', status)
+    if (status === 'all') query = query.neq('status', 'duplicate')
+    if (!status) query = query.not('status', 'in', `(${OFF_MARKET_STATUSES.join(',')})`)
     if (priceMin) query = query.gte('price', Number(priceMin))
     if (priceMax) query = query.lte('price', Number(priceMax))
     if (surfaceMin) query = query.gte('surface', Number(surfaceMin))

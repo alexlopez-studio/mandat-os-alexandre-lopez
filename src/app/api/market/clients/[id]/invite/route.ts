@@ -18,8 +18,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!detail) return NextResponse.json({ success: false, error: 'Dossier introuvable' }, { status: 404 })
 
     const profile = detail.dossier.client_profile
-    const redirectTo = buildClientPortalAuthRedirect(detail.dossier.public_token)
-    const clientUrl = buildClientPortalDossierUrl(detail.dossier.public_token)
+    const redirectTo = buildClientPortalAuthRedirect(detail.dossier.public_token, req)
+    const clientUrl = buildClientPortalDossierUrl(detail.dossier.public_token, req)
 
     const generated = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',

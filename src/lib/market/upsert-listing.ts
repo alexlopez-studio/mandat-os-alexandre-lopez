@@ -57,6 +57,30 @@ function terminalStatusFromListing(status?: string | null): 'expired' | 'removed
   return null
 }
 
+/**
+ * Enregistre chaque portail où le bien est diffusé. La fiche ne montre qu'une URL
+ * (celle de l'annonce de référence) mais on garde la trace des autres : c'est ce qui
+ * permet de voir la multi-diffusion et de savoir quelles annonces sont mortes.
+ */
+async function recordAllAdverts(propertyId: string, listing: StreamEstateListing, now: string) {
+  for (const advert of listing.adverts) {
+    if (!advert.url && !advert.uuid) continue
+    await upsertPropertySource({
+      propertyId,
+      source: 'stream_estate',
+      externalId: advert.uuid ?? null,
+      url: advert.url,
+      title: advert.title,
+      price: advert.price,
+      status: advert.expired ? 'expired' : 'active',
+      publishedAt: advert.createdAt,
+      firstSeenAt: advert.createdAt || now,
+      lastSeenAt: advert.lastCrawledAt || now,
+      rawJson: (advert.raw ?? {}) as never,
+    })
+  }
+}
+
 function normalizedText(value?: string | null): string {
   return String(value ?? '')
     .normalize('NFD')
@@ -134,16 +158,42 @@ async function findExistingListing(
     : { row: null, deduplicated: false }
 }
 
+/**
+ * Ancienneté à partir de laquelle un bien en agence devient un signal : le mandat
+ * traîne, le vendeur peut vouloir changer d'agence. Aligné sur le palier haut de
+ * l'axe « Temps » du mandate_score (30 points dès 90 jours).
+ */
+const AGENCY_NOTIFY_MIN_DAYS = 90
+
+function daysSince(value?: string | null): number | null {
+  if (!value) return null
+  const time = Date.parse(value)
+  if (!Number.isFinite(time)) return null
+  return Math.floor((Date.now() - time) / 86_400_000)
+}
+
 async function notifyNewListing(propertyId: string, listing: StreamEstateListing, fallbackZipcode: string) {
   const fmtPrice = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
   const isPap = listing.sellerType === 'individual'
+  const daysOnline = daysSince(listing.publishedAt)
+
+  // Une commune compte typiquement 10× plus de biens en agence que de PAP :
+  // tout notifier noierait les vrais signaux. Un bien en agence n'est notifié
+  // qu'une fois le mandat installé dans la durée — c'est là qu'il devient une
+  // opportunité de reprise. Le mandate_score continue de tous les classer.
+  const isAgedAgencyListing = daysOnline !== null && daysOnline >= AGENCY_NOTIFY_MIN_DAYS
+  if (!isPap && !isAgedAgencyListing) return
+
   const where = [listing.city, listing.zipcode ?? fallbackZipcode].filter(Boolean).join(' ')
   const sellerLabel = isPap ? ' · Particulier' : listing.sellerType === 'agency' ? ' · Mandataire/pro' : ''
+  const ageLabel = !isPap && daysOnline !== null ? ` · en vente depuis ${daysOnline} j` : ''
 
   const { error } = await supabaseAdmin.from('notifications').insert({
     type: 'new_listing',
-    title: `Nouveau bien : ${listing.title ?? 'annonce'}`,
-    message: `${where}${listing.price ? ` — ${fmtPrice.format(listing.price)}` : ''}${sellerLabel}`,
+    title: isPap
+      ? `Nouveau bien : ${listing.title ?? 'annonce'}`
+      : `Mandat qui traîne : ${listing.title ?? 'annonce'}`,
+    message: `${where}${listing.price ? ` — ${fmtPrice.format(listing.price)}` : ''}${sellerLabel}${ageLabel}`,
     priority: isPap ? 'high' : 'medium',
     market_property_id: propertyId,
     status: 'unread',
@@ -199,24 +249,14 @@ export async function upsertStreamEstateListing({
   const expired = terminalStatus !== null
   const nextStatus = terminalStatus ?? (listing.status ?? 'active')
   const nextPricePerM2 = pricePerM2(listing.price, listing.surface)
+  // Date de retrait réelle quand Stream Estate la connaît, sinon l'instant du constat.
+  const expiredAt = expired ? (listing.expiredAt || now) : null
 
   const { row: existing, deduplicated } = await findExistingListing(listing, externalId, fallbackZipcode)
 
   if (existing) {
     await ensurePropertySourceFromProperty(existing.id)
-    await upsertPropertySource({
-      propertyId: existing.id,
-      source: 'stream_estate',
-      externalId,
-      url: listing.url,
-      title: listing.title,
-      price: listing.price,
-      status: nextStatus,
-      publishedAt: listing.publishedAt,
-      firstSeenAt: listing.publishedAt || now,
-      lastSeenAt: now,
-      rawJson: (listing.raw ?? {}) as never,
-    })
+    await recordAllAdverts(existing.id, listing, now)
 
     const { error: updateError } = await supabaseAdmin
       .from('market_properties')
@@ -238,7 +278,7 @@ export async function upsertStreamEstateListing({
         dpe: listing.dpe ?? null,
         ges: listing.ges ?? null,
         status: nextStatus,
-        expired_at: expired ? now : null,
+        expired_at: expiredAt,
         last_seen_at: now,
         published_at: listing.publishedAt ?? existing.published_at ?? null,
         seller_type: listing.sellerType ?? existing.seller_type ?? null,
@@ -309,7 +349,7 @@ export async function upsertStreamEstateListing({
       first_seen_at: listing.publishedAt || now,
       last_seen_at: now,
       published_at: listing.publishedAt || null,
-      expired_at: expired ? now : null,
+      expired_at: expiredAt,
       seller_type: listing.sellerType ?? null,
       raw_json: (listing.raw ?? {}) as never,
     })
@@ -321,19 +361,7 @@ export async function upsertStreamEstateListing({
   }
 
   const propertyId = newProperty.id as string
-  await upsertPropertySource({
-    propertyId,
-    source: 'stream_estate',
-    externalId,
-    url: listing.url,
-    title: listing.title,
-    price: listing.price,
-    status: nextStatus,
-    publishedAt: listing.publishedAt,
-    firstSeenAt: listing.publishedAt || now,
-    lastSeenAt: now,
-    rawJson: (listing.raw ?? {}) as never,
-  })
+  await recordAllAdverts(propertyId, listing, now)
 
   const { error: tagError } = await supabaseAdmin
     .from('property_tags')

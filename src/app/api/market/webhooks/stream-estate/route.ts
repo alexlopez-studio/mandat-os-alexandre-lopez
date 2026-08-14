@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSetting } from '@/lib/settings'
-import { normalizeListing, type StreamEstateEventType } from '@/lib/stream-estate'
+import { getSetting, getStreamEstateQualityOptions } from '@/lib/settings'
+import { evaluateListingQuality, normalizeListing, type StreamEstateEventType } from '@/lib/stream-estate'
 import { upsertStreamEstateListing } from '@/lib/market/upsert-listing'
 import {
   getStreamEstateBudgetSnapshot,
@@ -117,6 +117,23 @@ export async function POST(req: NextRequest) {
     const listing = normalizeListing(rawProperty)
     const fallbackZipcode = listing.zipcode || ''
     const budget = await getStreamEstateBudgetSnapshot()
+
+    // Mêmes critères d'admission que l'import manuel, sauf pour les événements de
+    // retrait : ceux-là doivent toujours passer pour sortir le bien du flux chaud.
+    const quality = evaluateListingQuality(listing, await getStreamEstateQualityOptions())
+    const isRemoval = /expired|removed|delete/i.test(eventType) || listing.status === 'expired'
+    const blockingReasons = quality.reasons.filter((reason) => reason !== 'expired')
+
+    if (!isRemoval && blockingReasons.length > 0) {
+      // 200 volontaire : Stream Estate rejoue 5× tout ce qui n'est pas un 200,
+      // or ce refus est définitif — l'annonce ne remplit pas nos critères.
+      return NextResponse.json({
+        success: true,
+        skipped: true,
+        event_type: eventType,
+        rejected_reasons: blockingReasons,
+      })
+    }
 
     const upsert = await upsertStreamEstateListing({
       listing,

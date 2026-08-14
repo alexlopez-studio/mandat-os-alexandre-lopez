@@ -6,7 +6,7 @@ import { DEMO_SCENARIO_LABELS, ensureDemoClientDossier, scenarioFromState } from
 import { supabaseAdmin } from '@/lib/supabase'
 import type { Json } from '@/types/supabase'
 
-export async function GET() {
+export async function GET(req: Request) {
   const denied = await rejectIfNoAdmin()
   if (denied) return denied
 
@@ -31,7 +31,7 @@ export async function GET() {
         dossierTitle: dossier.title,
         scenario,
         scenarioLabel: DEMO_SCENARIO_LABELS[scenario],
-        previewUrl: buildClientPortalPreviewUrl(previewToken),
+        previewUrl: buildClientPortalPreviewUrl(previewToken, req),
       },
     })
   } catch (err) {

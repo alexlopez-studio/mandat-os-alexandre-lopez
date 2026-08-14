@@ -4,7 +4,7 @@ import { loadAdminClientDossier, rejectIfNoAdmin } from '@/lib/market/client-adm
 
 type RouteContext = { params: Promise<{ id: string }> }
 
-export async function GET(_req: Request, context: RouteContext) {
+export async function GET(req: Request, context: RouteContext) {
   const denied = await rejectIfNoAdmin()
   if (denied) return denied
 
@@ -21,7 +21,7 @@ export async function GET(_req: Request, context: RouteContext) {
     return NextResponse.json({
       success: true,
       data: {
-        client_url: buildClientPortalDossierUrl(detail.dossier.public_token),
+        client_url: buildClientPortalDossierUrl(detail.dossier.public_token, req),
         public_token: detail.dossier.public_token,
       },
     })

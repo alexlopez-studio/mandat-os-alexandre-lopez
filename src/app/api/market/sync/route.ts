@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { fetchListings, StreamEstateRequestLimitError } from '@/lib/stream-estate'
+import {
+  fetchListings,
+  propertyTypeLabels,
+  sellerTypesForPublisherTypes,
+  StreamEstateGeoTargetError,
+  StreamEstateRequestLimitError,
+} from '@/lib/stream-estate'
 import { upsertStreamEstateListing, type StreamEstateIngestSource } from '@/lib/market/upsert-listing'
-import { getSetting } from '@/lib/settings'
+import {
+  getSetting,
+  getStreamEstateImportWindowDays,
+  getStreamEstateQualityOptions,
+  windowStartIso,
+} from '@/lib/settings'
 import {
   canSpendStreamEstateItems,
   getStreamEstateSyncItemCap,
@@ -13,6 +24,11 @@ import {
 const ZIPCODE_RE = /^\d{5}$/
 const ALLOWED_PROPERTY_TYPES = new Set([0, 1, 5])
 const DEFAULT_PROPERTY_TYPES = [0, 1, 5]
+// Type d'annonceur Stream Estate : 0 = particulier (PAP), 1 = professionnel.
+// Défaut PAP seul : les biens en agence sont bien plus nombreux, donc plus chers
+// à importer. Les inclure est un choix explicite, fait au moment de l'import.
+const ALLOWED_PUBLISHER_TYPES = new Set([0, 1])
+const DEFAULT_PUBLISHER_TYPES = [0]
 
 // Moteur de règles `management_rules` neutralisé : le mandate_score est la source de
 // vérité (motivation + dimensions + alertes). Les règles seed à conditions vides
@@ -135,6 +151,62 @@ function readPropertyTypes(body: Record<string, unknown> | null | undefined): nu
   return parsed.length > 0 ? Array.from(new Set(parsed)) : DEFAULT_PROPERTY_TYPES
 }
 
+function readPublisherTypes(body: Record<string, unknown> | null | undefined): number[] {
+  const raw = body?.publisher_types ?? body?.publisherTypes
+  const values = Array.isArray(raw) ? raw : []
+  const parsed = values
+    .map((value) => Number(value))
+    .filter((value) => ALLOWED_PUBLISHER_TYPES.has(value))
+  return parsed.length > 0 ? Array.from(new Set(parsed)).sort() : DEFAULT_PUBLISHER_TYPES
+}
+
+/**
+ * Sort du marché les biens de la zone que l'import complet n'a pas revus.
+ * Stream Estate n'expose aucun statut « vendu » : une annonce qui cesse de
+ * remonter sur un balayage exhaustif est le seul signal de retrait exploitable.
+ * On ne supprime rien — l'historique de prix sert aux statistiques de marché.
+ *
+ * Cadrage indispensable : un import ne prouve rien hors de son propre périmètre.
+ * Scanner « maisons PAP » ne dit rien des appartements ni des biens en agence,
+ * qui doivent donc rester intacts.
+ */
+async function reconcileZoneListings(
+  zone: ZoneInfo,
+  zipcode: string,
+  startedAt: string,
+  scope: { propertyTypes: number[]; publisherTypes: number[] },
+): Promise<number> {
+  const now = new Date().toISOString()
+  // Tout bien revu pendant l'import a vu son `last_seen_at` réécrit : ceux restés
+  // en arrière n'ont pas été retournés par l'API, donc ne sont plus en ligne.
+  let query = supabaseAdmin
+    .from('market_properties')
+    .update({ status: 'expired', expired_at: now } as never)
+    .eq('source', 'stream_estate')
+    .eq('status', 'active')
+    .lt('last_seen_at', startedAt)
+
+  query = zone.inseeCode
+    ? query.eq('insee_code', zone.inseeCode)
+    : query.eq('zipcode', zipcode)
+
+  const typeLabels = propertyTypeLabels(scope.propertyTypes)
+  if (typeLabels.length > 0) query = query.in('property_type', typeLabels)
+
+  // Un scan restreint à un type d'annonceur ne peut conclure que sur celui-ci.
+  // `seller_type` nul = origine indéterminée : on n'y touche pas.
+  const sellerTypes = sellerTypesForPublisherTypes(scope.publisherTypes)
+  if (sellerTypes.length === 1) query = query.eq('seller_type', sellerTypes[0])
+
+  const { data, error } = await query.select('id')
+
+  if (error) {
+    console.error('[API /market/sync] réconciliation impossible:', error.message)
+    return 0
+  }
+  return data?.length ?? 0
+}
+
 type ZoneInfo = { id: string; inseeCode: string | null; lastSyncedAt: string | null }
 
 type ZoneLookup = { zipcode: string; inseeCode?: string | null; name?: string | null; city?: string | null }
@@ -205,14 +277,43 @@ export async function POST(req: NextRequest) {
     const budget = await getStreamEstateBudgetSnapshot()
     const force = (body as Record<string, unknown>)?.force === true
     const propertyTypes = readPropertyTypes(body as Record<string, unknown>)
+    const publisherTypes = readPublisherTypes(body as Record<string, unknown>)
     const rawSource = (body as Record<string, unknown>)?.source
     const source: StreamEstateIngestSource = rawSource === 'reconcile' || rawSource === 'webhook' ? rawSource : 'manual'
     const rawFromDate = (body as Record<string, unknown>)?.fromDate ?? (body as Record<string, unknown>)?.from_date
     const rawFromUpdatedAt = (body as Record<string, unknown>)?.fromUpdatedAt ?? (body as Record<string, unknown>)?.from_updated_at
     const fromDate = typeof rawFromDate === 'string' && rawFromDate ? rawFromDate : null
-    const fromUpdatedAt = typeof rawFromUpdatedAt === 'string' && rawFromUpdatedAt ? rawFromUpdatedAt : null
+    // Fenêtre par défaut : sans elle on paie le cimetière d'annonces jamais
+    // marquées expirées (88 à 94 % du total). Un appelant peut la surcharger
+    // (le cron passe sa propre fenêtre de réconciliation).
+    const importWindowDays = await getStreamEstateImportWindowDays()
+    const explicitFromUpdatedAt = typeof rawFromUpdatedAt === 'string' && rawFromUpdatedAt
+      ? rawFromUpdatedAt
+      : null
+    const fromUpdatedAt = explicitFromUpdatedAt ?? windowStartIso(importWindowDays)
     const rawInsee = (body as Record<string, unknown>)?.insee_code ?? (body as Record<string, unknown>)?.inseeCode
     const inseeCode = typeof rawInsee === 'string' && /^\d{5}$/.test(rawInsee) ? rawInsee : null
+
+    // Contrôlé avant toute écriture : un import refusé ne doit pas laisser
+    // derrière lui une zone surveillée fantôme.
+    if (!inseeCode) {
+      const { data: zoneRows } = await supabaseAdmin
+        .from('monitored_zones')
+        .select('insee_code')
+        .eq('zipcode', zipcode)
+        .not('insee_code', 'is', null)
+        .order('created_at', { ascending: true })
+        .limit(1)
+
+      if (!zoneRows?.[0]?.insee_code) {
+        return errorResponse(new StreamEstateGeoTargetError(zipcode).message, 400, {
+          blocked_reason: 'stream_estate_insee_required',
+          billed_items: 0,
+          estimated_cost_eur: 0,
+        })
+      }
+    }
+
     const rawName = (body as Record<string, unknown>)?.name
     const rawCity = (body as Record<string, unknown>)?.city
     const zone = await getOrCreateZone({
@@ -296,20 +397,24 @@ export async function POST(req: NextRequest) {
     const maxItems = Math.min(requestedMaxItems, availableItems)
 
     const syncId = await createSyncRun(zoneId, 'running', undefined, source)
+    const runStartedAt = new Date().toISOString()
     let externalRequestCount = 0
     let estimatedCostEur = 0
     let billedItemCount = 0
 
     try {
       // 3. Appel Stream Estate
+      const quality = await getStreamEstateQualityOptions()
       const result = await fetchListings({
         zipcode,
         inseeCode: zone.inseeCode,
         propertyTypes,
+        publisherTypes,
         maxItems,
         fromDate,
         fromUpdatedAt,
         source,
+        quality,
         beforeRequest: async () => {
           const allowed = await canSpendStreamEstateItems()
           if (!allowed.ok) {
@@ -341,7 +446,7 @@ export async function POST(req: NextRequest) {
 
       let createdCount = 0
       let updatedCount = 0
-      const skippedCount = 0
+      const skippedCount = result.rejected
 
       // 4. Upsert des biens dans market_properties
       for (const listing of listings) {
@@ -354,8 +459,17 @@ export async function POST(req: NextRequest) {
         if (upsert.updated) updatedCount++
       }
 
-      // 5. Marquer les biens non vus comme expirés (sera fait par un job planifié)
-      // Note MVP : les biens expirés sont détectés lors des synchronisations suivantes.
+      // 5. Réconciliation : sur un balayage exhaustif, ce qui n'est pas remonté
+      // n'est plus en ligne. Un import tronqué ou incrémental ne prouve rien.
+      //
+      // La fenêtre d'import par défaut ne disqualifie pas le balayage : un bien
+      // absent parce qu'inchangé depuis plus de 180 jours n'est plus crawlé non
+      // plus (30/30 sur l'échantillon), donc plus en ligne. En revanche une
+      // fenêtre imposée par l'appelant — le cron incrémental — ne prouve rien.
+      const isFullScan = !result.truncated && !fromDate && !explicitFromUpdatedAt
+      const expiredCount = isFullScan
+        ? await reconcileZoneListings(zone, zipcode, runStartedAt, { propertyTypes, publisherTypes })
+        : 0
 
       // 6. Exécuter les règles actives (neutralisé — cf. RULES_ENGINE_ENABLED)
       if (RULES_ENGINE_ENABLED) {
@@ -397,8 +511,11 @@ export async function POST(req: NextRequest) {
         source,
         from_date: fromDate,
         from_updated_at: fromUpdatedAt,
+        import_window_days: explicitFromUpdatedAt ? null : importWindowDays,
         fetched: listings.length,
         skipped: skippedCount,
+        rejected_reasons: result.rejectedReasons,
+        expired: expiredCount,
         created: createdCount,
         updated: updatedCount,
         estimated_items: estimatedItems,

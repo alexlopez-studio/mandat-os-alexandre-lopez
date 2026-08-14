@@ -77,7 +77,9 @@ type SyncPreview = {
   provider_total_available?: number
   online_exact?: number
   total_exact?: number
-  online_by_zipcode?: number | null
+  online_all_time?: number
+  estimated_kept?: number
+  import_window_days?: number
   estimated_items: number
   estimated_cost_eur: number
   preview_capped?: boolean
@@ -163,6 +165,12 @@ const PROPERTY_TYPE_OPTIONS = [
   { value: 0, label: 'Appartement' },
   { value: 1, label: 'Maison' },
   { value: 5, label: 'Terrain' },
+]
+
+// Codes annonceur Stream Estate : 0 = particulier, 1 = professionnel.
+const PUBLISHER_TYPE_OPTIONS = [
+  { value: 0, label: 'Particulier (PAP)' },
+  { value: 1, label: 'Agence' },
 ]
 
 const PERSONAL_DEFAULTS = {
@@ -251,8 +259,10 @@ function SettingsPageContent() {
   const [syncTarget, setSyncTarget] = useState<SyncTarget | null>(null)
   const [syncPreview, setSyncPreview] = useState<SyncPreview | null>(null)
   const [selectedPropertyTypes, setSelectedPropertyTypes] = useState<number[]>([0, 1, 5])
+  const [selectedPublisherTypes, setSelectedPublisherTypes] = useState<number[]>([0])
   const [previewLoading, setPreviewLoading] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [repairing, setRepairing] = useState(false)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [editingZoneId, setEditingZoneId] = useState<string | null>(null)
@@ -283,6 +293,10 @@ function SettingsPageContent() {
   const costPerItem = budget?.cost_per_item_eur ?? budget?.cost_per_request_eur ?? 0
   const onlineCount = syncPreview?.online_exact ?? syncPreview?.total_available ?? 0
   const totalWithExpired = syncPreview?.total_exact ?? syncPreview?.provider_total_available ?? null
+  const estimatedKept = syncPreview?.estimated_kept ?? null
+  // Annonces jamais marquées expirées par Stream Estate mais figées depuis
+  // longtemps : la fenêtre d'import évite de les payer.
+  const ghostCount = Math.max(0, (syncPreview?.online_all_time ?? 0) - onlineCount)
 
   const load = useCallback(async () => {
     try {
@@ -454,7 +468,11 @@ function SettingsPageContent() {
     void previewTarget(target)
   }
 
-  async function previewTarget(target = syncTarget, propertyTypes = selectedPropertyTypes) {
+  async function previewTarget(
+    target = syncTarget,
+    propertyTypes = selectedPropertyTypes,
+    publisherTypes = selectedPublisherTypes,
+  ) {
     if (!target) {
       toast.error('Rattache une commune avant de prévisualiser')
       return null
@@ -466,6 +484,7 @@ function SettingsPageContent() {
         zipcode: target.zipcode,
         insee_code: target.inseeCode,
         property_types: propertyTypes,
+        publisher_types: publisherTypes,
       }
       if (!unlimitedItems) {
         body.max_items = Math.max(1, Math.floor(Number(maxItemsPerSync) || defaultMaxItems))
@@ -507,6 +526,23 @@ function SettingsPageContent() {
     if (syncTarget) void previewTarget(syncTarget, next)
   }
 
+  function togglePublisherType(value: number) {
+    const next = selectedPublisherTypes.includes(value)
+      ? selectedPublisherTypes.filter((item) => item !== value)
+      : [...selectedPublisherTypes, value].sort((a, b) => a - b)
+
+    if (next.length === 0) {
+      toast.error('Garde au moins un type de vendeur')
+      return
+    }
+
+    setSelectedPublisherTypes(next)
+    // Le comptage gratuit est re-lancé : inclure les agences change fortement
+    // le volume, donc le coût affiché avant validation.
+    setSyncPreview(null)
+    if (syncTarget) void previewTarget(syncTarget, selectedPropertyTypes, next)
+  }
+
   async function confirmImport() {
     if (!syncTarget) {
       toast.error('Rattache une commune avant d’importer')
@@ -528,6 +564,7 @@ function SettingsPageContent() {
         name: syncTarget.name,
         city: syncTarget.name,
         property_types: selectedPropertyTypes,
+        publisher_types: selectedPublisherTypes,
       }
       if (!unlimitedItems) {
         body.max_items = Math.max(1, Math.floor(Number(maxItemsPerSync) || defaultMaxItems))
@@ -541,9 +578,15 @@ function SettingsPageContent() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Importation impossible')
 
-      toast.success(
-        `Import terminé : ${data.created ?? 0} créé(s), ${data.updated ?? 0} mis à jour (${fmtEur(data.cost_eur ?? 0)})`
-      )
+      // `skipped` = annonces écartées par les critères de qualité (hors ligne, prix
+      // incohérent…), `expired` = biens sortis du marché par la réconciliation.
+      const details = [
+        `${data.created ?? 0} créé(s)`,
+        `${data.updated ?? 0} mis à jour`,
+        ...(data.skipped ? [`${data.skipped} écarté(s)`] : []),
+        ...(data.expired ? [`${data.expired} retiré(s) du marché`] : []),
+      ].join(', ')
+      toast.success(`Import terminé : ${details} (${fmtEur(data.estimated_cost_eur ?? 0)})`)
       setCommuneQuery('')
       setSelectedCommune(null)
       setSelectedZip('')
@@ -555,6 +598,34 @@ function SettingsPageContent() {
       toast.error(message)
     } finally {
       setImporting(false)
+    }
+  }
+
+  /**
+   * Recalcule les biens déjà importés depuis leur payload stocké : corrige les
+   * fiches pointant vers une annonce morte et sort du marché celles qui ne sont
+   * plus en ligne. Gratuit — aucun appel facturé à Stream Estate.
+   */
+  async function repairListings() {
+    setRepairing(true)
+    try {
+      const res = await fetch('/api/market/sync/repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Nettoyage impossible')
+
+      toast.success(
+        `Nettoyage terminé : ${data.repaired ?? 0} fiche(s) corrigée(s), ` +
+        `${data.expired ?? 0} sortie(s) du marché sur ${data.scanned ?? 0} bien(s)`
+      )
+      await load()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRepairing(false)
     }
   }
 
@@ -835,6 +906,38 @@ function SettingsPageContent() {
                       </div>
                     </div>
 
+                    <div className="rounded-xl border bg-muted/40 p-4 space-y-2">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                        Qui vend
+                      </Label>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {PUBLISHER_TYPE_OPTIONS.map((option) => {
+                          const active = selectedPublisherTypes.includes(option.value)
+                          return (
+                            <button
+                              key={option.value}
+                              type="button"
+                              aria-pressed={active}
+                              onClick={() => togglePublisherType(option.value)}
+                              className={cn(
+                                "rounded-full border px-4 py-1.5 text-xs font-bold transition-all",
+                                active
+                                  ? "border-primary bg-primary text-white shadow-xs"
+                                  : "border-border bg-background text-foreground hover:bg-muted"
+                              )}
+                            >
+                              {option.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Les biens en agence sont bien plus nombreux : le comptage ci-dessous
+                        chiffre l’import avant de payer. Utile pour repérer les mandats qui
+                        traînent et les vendeurs prêts à changer d’agence.
+                      </p>
+                    </div>
+
                     {/* Commune rattachée */}
                     {syncTarget ? (
                       <div className="rounded-xl border bg-muted/30 p-4 space-y-2">
@@ -867,11 +970,17 @@ function SettingsPageContent() {
                           <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-center">
                             <div className="space-y-1.5">
                               <p className={cn("text-base font-bold", syncPreview.can_confirm ? 'text-emerald-950' : 'text-amber-950')}>
-                                {fmt(onlineCount)} annonce{onlineCount > 1 ? 's' : ''} en ligne
+                                {fmt(onlineCount)} annonce{onlineCount > 1 ? 's' : ''} facturée{onlineCount > 1 ? 's' : ''}
+                                {estimatedKept != null ? <> → environ {fmt(estimatedKept)} bien{estimatedKept > 1 ? 's' : ''} retenu{estimatedKept > 1 ? 's' : ''}</> : null}
                               </p>
                               <p className="text-xs text-muted-foreground font-medium">
+                                {ghostCount > 0 ? (
+                                  <>
+                                    <strong>{fmt(ghostCount)}</strong> annonce{ghostCount > 1 ? 's' : ''} plus mise{ghostCount > 1 ? 's' : ''} à jour
+                                    depuis {syncPreview.import_window_days} j {ghostCount > 1 ? 'sont écartées' : 'est écartée'} avant facturation.{' '}
+                                  </>
+                                ) : null}
                                 {totalWithExpired != null ? <>Total incl. expirées : <strong>{fmt(totalWithExpired)}</strong>. </> : null}
-                                {syncPreview.online_by_zipcode != null ? <>Sur tout le CP {syncPreview.zipcode} : <strong>{fmt(syncPreview.online_by_zipcode)}</strong> en ligne. </> : null}
                               </p>
                               <p className="text-xs font-bold text-foreground pt-1">
                                 Appel payant si validation : {fmtEur(syncPreview.estimated_cost_eur)}
@@ -908,14 +1017,27 @@ function SettingsPageContent() {
 
                 {/* 4. Communes surveillées Card */}
                 <div className="rounded-2xl border bg-card p-6 shadow-xs space-y-4">
-                  <div className="border-b pb-3 space-y-1">
-                    <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                      <MapPin className="size-4 text-primary" />
-                      Communes surveillées ({zones.length})
-                    </h3>
-                    <p className="text-xs text-muted-foreground font-medium">
-                      Les communes sont modifiables et supprimables. « Preview » ouvre l’écran d’import sur la commune choisie.
-                    </p>
+                  <div className="border-b pb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <MapPin className="size-4 text-primary" />
+                        Communes surveillées ({zones.length})
+                      </h3>
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Les communes sont modifiables et supprimables. « Preview » ouvre l’écran d’import sur la commune choisie.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void repairListings()}
+                      disabled={repairing}
+                      className="h-8 rounded-full text-xs font-semibold shrink-0"
+                    >
+                      {repairing ? <Loader2 className="mr-1.5 size-3 animate-spin" /> : null}
+                      Nettoyer les biens importés
+                    </Button>
                   </div>
 
                   <div className="space-y-3">

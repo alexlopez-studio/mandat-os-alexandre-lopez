@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { portalLabel } from '@/lib/stream-estate'
 import type { Json } from '@/types/supabase'
 
 export type PropertySourceInput = {
@@ -40,25 +41,11 @@ type CandidateProperty = DuplicateCandidateView['property'] & {
   insee_code?: string | null
 }
 
+/** Liste des portails maintenue au même endroit que la priorité de diffusion. */
 export function portalFromUrl(url?: string | null, fallback?: string | null) {
   if (!url) return fallback || 'Source inconnue'
-  try {
-    const host = new URL(url).hostname
-      .replace(/^www\./, '')
-      .replace(/^m\./, '')
-      .toLowerCase()
-
-    if (host.includes('leboncoin')) return 'Leboncoin'
-    if (host.includes('seloger')) return 'SeLoger'
-    if (host.includes('pap.fr')) return 'PAP'
-    if (host.includes('bienici')) return "Bien'ici"
-    if (host.includes('logic-immo')) return 'Logic-Immo'
-    if (host.includes('figaro')) return 'Figaro Immobilier'
-
-    return host
-  } catch {
-    return fallback || 'Source inconnue'
-  }
+  const label = portalLabel(url)
+  return label === 'Source inconnue' ? (fallback || label) : label
 }
 
 function normalizeText(value?: string | null) {

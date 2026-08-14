@@ -56,8 +56,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { profile, dossier } = await ensureClientDossierForLead(leadId)
-    const redirectTo = buildClientPortalAuthRedirect(dossier.public_token)
-    const clientUrl = buildClientPortalDossierUrl(dossier.public_token)
+    const redirectTo = buildClientPortalAuthRedirect(dossier.public_token, req)
+    const clientUrl = buildClientPortalDossierUrl(dossier.public_token, req)
 
     const generated = await supabaseAdmin.auth.admin.generateLink({
       type: 'magiclink',

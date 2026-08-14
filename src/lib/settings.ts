@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { supabaseAdmin } from '@/lib/supabase'
+import { DEFAULT_MAX_CRAWL_AGE_DAYS, type ListingQualityOptions } from '@/lib/stream-estate'
 import type { Json } from '@/types/supabase'
 
 // ── Cadence de re-vérification du monitoring (règles, ajustables) ──
@@ -49,6 +50,55 @@ export async function setSetting(key: string, value: Json): Promise<void> {
         .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
 
     if (error) throw error
+}
+
+// ── Qualité des annonces Stream Estate ────────────────────────────
+export const STREAM_ESTATE_QUALITY_KEYS = {
+    maxCrawlAgeDays: 'stream_estate_max_crawl_age_days',
+    requireCoherentPrice: 'stream_estate_require_coherent_price',
+    importWindowDays: 'stream_estate_import_window_days',
+} as const
+
+/**
+ * Fenêtre `fromUpdatedAt` appliquée aux imports, en jours.
+ *
+ * Sans elle, on paie l'intégralité des annonces jamais marquées expirées par
+ * Stream Estate : 88 à 94 % du total sur les communes mesurées (Pontevès 164 → 20
+ * réellement vivants, Brignoles 9 062 → 951). Le filtre serveur évite de payer
+ * ce cimetière, le filtre de fraîcheur côté client fait ensuite le tri fin.
+ *
+ * 180 jours : sur 30 biens tirés de la bande écartée (contenu figé depuis 180 à
+ * 365 j), 30 avaient aussi cessé d'être crawlés — zéro annonce vivante perdue.
+ * `0` désactive la fenêtre (on repaie tout).
+ */
+export const DEFAULT_IMPORT_WINDOW_DAYS = 180
+
+export async function getStreamEstateImportWindowDays(): Promise<number> {
+    const raw = await getSetting<number>(STREAM_ESTATE_QUALITY_KEYS.importWindowDays, DEFAULT_IMPORT_WINDOW_DAYS)
+    const days = Number(raw)
+    return Number.isFinite(days) && days >= 0 ? Math.floor(days) : DEFAULT_IMPORT_WINDOW_DAYS
+}
+
+/** Date ISO correspondant à `days` jours en arrière, ou null si `days` vaut 0. */
+export function windowStartIso(days: number): string | null {
+    return days > 0 ? new Date(Date.now() - days * 86_400_000).toISOString() : null
+}
+
+/**
+ * Critères d'admission des annonces importées depuis Stream Estate.
+ * Ajustables sans redéploiement via `app_settings`.
+ */
+export async function getStreamEstateQualityOptions(): Promise<ListingQualityOptions> {
+    const [maxCrawlAgeDays, requireCoherentPrice] = await Promise.all([
+        getSetting<number>(STREAM_ESTATE_QUALITY_KEYS.maxCrawlAgeDays, DEFAULT_MAX_CRAWL_AGE_DAYS),
+        getSetting<boolean>(STREAM_ESTATE_QUALITY_KEYS.requireCoherentPrice, true),
+    ])
+    const days = Number(maxCrawlAgeDays)
+
+    return {
+        maxCrawlAgeDays: Number.isFinite(days) && days >= 0 ? days : DEFAULT_MAX_CRAWL_AGE_DAYS,
+        requireCoherentPrice: requireCoherentPrice !== false,
+    }
 }
 
 /**

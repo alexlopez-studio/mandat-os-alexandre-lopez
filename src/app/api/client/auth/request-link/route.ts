@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const emailRedirectTo = buildClientPortalAuthRedirect()
+    const emailRedirectTo = buildClientPortalAuthRedirect(undefined, req)
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
