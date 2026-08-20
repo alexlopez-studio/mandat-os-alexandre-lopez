@@ -28,6 +28,9 @@ export const SELLER_STAGE_ORDER = [
   LOST_STAGE,
 ] as const
 
+/** Un stade du parcours vendeur, tel qu'il est stocke dans `projects.stage`. */
+export type SellerStage = (typeof SELLER_STAGE_ORDER)[number]
+
 /** Parcours lineaire sans l'etat terminal, seul ordre qui ait un sens. */
 const LINEAR_STAGE_ORDER = SELLER_STAGE_ORDER.filter((stage) => stage !== LOST_STAGE)
 

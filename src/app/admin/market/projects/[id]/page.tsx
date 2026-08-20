@@ -57,7 +57,7 @@ import {
 } from 'lucide-react'
 
 import { toast } from 'sonner'
-import { DeadlineCalendar, LiquidTemplateEditor, MandateActionsPanel, ProjectContactDialog, StatusPill, ToggleChip, type DeadlineItem } from '@/components/pro'
+import { DeadlineCalendar, LiquidTemplateEditor, MandateActionsPanel, MandateFilePanel, ProjectContactDialog, SaleContextPanel, StatusPill, ToggleChip, type DeadlineItem } from '@/components/pro'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -994,6 +994,9 @@ export default function OpportunityDetailPage() {
   const [deletingOpportunity, setDeletingOpportunity] = useState(false)
   const [propertyEditOpen, setPropertyEditOpen] = useState(false)
   const [activityFilter, setActivityFilter] = useState<'all' | 'note' | 'task' | 'call' | 'meeting'>('all')
+  // Incremente a chaque enregistrement du contexte : c'est le signal qui
+  // fait recalculer la liste des pieces au panneau voisin.
+  const [saleContextVersion, setSaleContextVersion] = useState(0)
 
 
   const load = useCallback(async () => {
@@ -2434,8 +2437,21 @@ export default function OpportunityDetailPage() {
 
         <TabsContent value="dossier">
           <div className="space-y-5">
+            {/* Le contexte appartient au projet, pas au dossier : il se saisit des
+                la visite d'estimation, avant meme qu'un suivi client existe. */}
+            <SaleContextPanel
+              projectId={opportunity.id}
+              propertyType={opportunity.property_type}
+              onSaved={() => setSaleContextVersion((version) => version + 1)}
+            />
+
             {opportunity.client_dossier ? (
               <>
+                <MandateFilePanel
+                  dossierId={opportunity.client_dossier.id}
+                  refreshToken={saleContextVersion}
+                  onDocumentsChanged={() => void load()}
+                />
                 {/* Paralleles au statut : elles ne rentrent pas dans le stepper. */}
                 <MandateActionsPanel dossierId={opportunity.client_dossier.id} />
                 <DossierWorkspace dossierId={opportunity.client_dossier.id} opportunityId={opportunity.id} />

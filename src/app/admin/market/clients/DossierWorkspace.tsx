@@ -45,6 +45,8 @@ import { AudienceTrackingPanel } from '../opportunities/[id]/AudienceTrackingPan
 import { PersonalizationCard } from './PersonalizationCard'
 import { MilestoneStepper } from '@/components/pro'
 import type { Json } from '@/types/supabase'
+// Vocabulaire unique des categories, partage avec la matrice documentaire.
+import { DOCUMENT_CATEGORY_OPTIONS } from '@/lib/market/document-requirements'
 
 /**
  * Espace de suivi client post-estimation/post-mandat (Documents / Plan de vente /
@@ -112,7 +114,6 @@ const OFFER_STATUS_OPTIONS = [
 ]
 const OFFER_CONDITION_OPTIONS = ['Sans condition suspensive', 'Sous condition de prêt', 'Sous condition de vente', 'Sous condition urbanisme', 'Paiement comptant']
 const OFFER_STRENGTH_OPTIONS = ['À vérifier', 'Correct', 'Solide', 'Très solide']
-const DOCUMENT_CATEGORY_OPTIONS = ['Propriété', 'Identité', 'Diagnostics', 'Fiscalité', 'Urbanisme', 'Copropriété', 'Travaux', 'Assainissement', 'Mandat', 'Autre']
 const REJECTION_REASON_OPTIONS = ['Illisible', 'Document incomplet', 'Document expiré', 'Mauvais document', 'Informations incohérentes', 'À rescanner']
 
 const ADMIN_INPUT_CLASS = 'h-10 rounded-xl px-3 text-sm'
@@ -784,7 +785,7 @@ function SelectWithOther({
 }: {
   label: string
   value: string
-  options: string[]
+  options: readonly string[]
   onChange: (value: string) => void
   compact?: boolean
 }) {

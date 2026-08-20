@@ -494,6 +494,7 @@ export type Database = {
           dossier_id: string
           label: string
           category: string
+          requirement_key: string | null
           status: ClientDocumentStatus
           storage_path: string | null
           file_name: string | null
@@ -512,6 +513,7 @@ export type Database = {
           dossier_id: string
           label: string
           category?: string
+          requirement_key?: string | null
           status?: ClientDocumentStatus
           storage_path?: string | null
           file_name?: string | null
@@ -530,6 +532,7 @@ export type Database = {
           dossier_id?: string
           label?: string
           category?: string
+          requirement_key?: string | null
           status?: ClientDocumentStatus
           storage_path?: string | null
           file_name?: string | null
@@ -1113,6 +1116,7 @@ export type Database = {
           visit_at: string | null
           report_delivered_at: string | null
           property_snapshot: Record<string, unknown>
+          sale_context: Record<string, unknown>
           professional_opinion: Record<string, unknown>
           internal_intel: Record<string, unknown>
           created_from: string | null
@@ -1163,6 +1167,7 @@ export type Database = {
           visit_at?: string | null
           report_delivered_at?: string | null
           property_snapshot?: Record<string, unknown>
+          sale_context?: Record<string, unknown>
           professional_opinion?: Record<string, unknown>
           internal_intel?: Record<string, unknown>
           created_from?: string | null
@@ -1212,6 +1217,7 @@ export type Database = {
           visit_at?: string | null
           report_delivered_at?: string | null
           property_snapshot?: Record<string, unknown>
+          sale_context?: Record<string, unknown>
           professional_opinion?: Record<string, unknown>
           internal_intel?: Record<string, unknown>
           created_from?: string | null
