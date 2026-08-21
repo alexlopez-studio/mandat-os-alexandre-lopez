@@ -57,7 +57,7 @@ import {
 } from 'lucide-react'
 
 import { toast } from 'sonner'
-import { DeadlineCalendar, LiquidTemplateEditor, MandateActionsPanel, MandateFilePanel, ProjectContactDialog, SaleContextPanel, StatusPill, ToggleChip, type DeadlineItem } from '@/components/pro'
+import { DeadlineCalendar, LiquidTemplateEditor, MandateActionsPanel, MandateFilePanel, ProjectContactDialog, PropertyRisksPanel, SaleContextPanel, StatusPill, ToggleChip, type DeadlineItem } from '@/components/pro'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -2444,6 +2444,9 @@ export default function OpportunityDetailPage() {
               propertyType={opportunity.property_type}
               onSaved={() => setSaleContextVersion((version) => version + 1)}
             />
+
+            {/* Informatif : prepare l'ERP, ne coche aucune case du contexte. */}
+            <PropertyRisksPanel projectId={opportunity.id} />
 
             {opportunity.client_dossier ? (
               <>
