@@ -4,6 +4,7 @@ import * as React from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { WEEKDAYS, buildWeeks, dayKey } from '@/components/pro/calendar-utils'
 import { cn } from '@/lib/utils'
 
 /**
@@ -26,25 +27,10 @@ type DeadlineCalendarProps = {
   className?: string
 }
 
-const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
-
 const TONE_DOT: Record<NonNullable<DeadlineItem['tone']>, string> = {
   default: 'bg-primary',
   overdue: 'bg-destructive',
   done: 'bg-muted-foreground',
-}
-
-function dayKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-/** Lundi de la semaine contenant `date`. */
-function startOfWeek(date: Date) {
-  const result = new Date(date)
-  const offset = (result.getDay() + 6) % 7
-  result.setDate(result.getDate() - offset)
-  result.setHours(0, 0, 0, 0)
-  return result
 }
 
 function formatHour(value: string) {
@@ -91,20 +77,7 @@ function DeadlineCalendar({ items = [], onSelectItem, emptyText, className }: De
   const today = new Date()
   const todayKey = dayKey(today)
 
-  const weeks = React.useMemo(() => {
-    const first = startOfWeek(month)
-    const result: Date[][] = []
-    const cursor = new Date(first)
-    for (let week = 0; week < 6; week += 1) {
-      const days: Date[] = []
-      for (let day = 0; day < 7; day += 1) {
-        days.push(new Date(cursor))
-        cursor.setDate(cursor.getDate() + 1)
-      }
-      result.push(days)
-    }
-    return result
-  }, [month])
+  const weeks = React.useMemo(() => buildWeeks(month), [month])
 
   const selectedItems = selectedDay ? itemsByDay.get(selectedDay) ?? [] : []
 

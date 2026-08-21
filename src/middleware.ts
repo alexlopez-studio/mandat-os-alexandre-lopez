@@ -18,6 +18,11 @@ const PROTECTED_API_PREFIXES = [
 
 const PUBLIC_API_PATHS = [
   '/api/market/webhooks/stream-estate',
+  // Veille & calendrier editorial : appeles par la skill Claude sans session.
+  // La garde est portee par la route elle-meme (`isMachineOrAdmin`, secret
+  // partage ou session admin) — voir `src/lib/api-machine-auth.ts`.
+  '/api/market/news',
+  '/api/market/content',
 ]
 
 export async function middleware(req: NextRequest) {

@@ -3306,4 +3306,84 @@ cette migration ne sera jamais plus bas.
   Arbitrage en attente.
 
 ---
-Dernière mise à jour : 07/08/2026
+
+## 22/08/2026 — Calendrier éditorial adossé à la veille
+
+### Contexte
+
+La veille (`news_items`, migration 051, `/app/news`) était un cul-de-sac : rien
+ne l'alimentait (aucun `POST`, aucun cron) et rien ne la consommait — le statut
+`newsletter` n'avait aucun débouché. Objectif : fermer la chaîne
+**article de veille → angle éditorial → déclinaisons datées par canal**.
+
+### Ce qui a été fait
+
+- **Migration 052** (`content_angles`, `content_posts`) : deux tables, `text` +
+  `check`, RLS activée sans policy, triggers `updated_at`. Corrige au passage la
+  dette de 051 : trigger `news_items_updated_at` manquant, `comment on` absents.
+  **Appliquée en production** (projet `ntlbforzrdmeifpzfjtk`).
+- **Ingestion de la veille** : `POST /api/market/news`, secret partagé
+  `EDITORIAL_API_KEY` en Bearer (jamais une clé Supabase), 50 articles max,
+  idempotent via `upsert(onConflict: 'url', ignoreDuplicates: true)`.
+- **API calendrier** : `/api/market/content/angles[/id]` et
+  `/api/market/content/posts[/id]`. Le `POST` sur `angles` crée l'angle **et**
+  ses déclinaisons en un appel — point d'entrée de la skill Claude.
+- **Double accès** : session admin (l'app) ou secret partagé (la skill). Ces
+  routes sont sorties de `PROTECTED_API_PREFIXES` via `PUBLIC_API_PATHS` et
+  portent leur propre garde, fail-closed (`src/lib/api-machine-auth.ts`).
+- **UI** : `/app/editorial` (4 onglets — Calendrier, À produire, Angles,
+  Publiés), nouvelle primitive `ContentCalendar`, utilitaires de grille
+  mensuelle extraits dans `src/components/pro/calendar-utils.ts` et partagés
+  avec `DeadlineCalendar`.
+- **Page Veille** : action « Créer un angle éditorial » (dialog prérempli depuis
+  l'article), et **correction des compteurs d'onglets** — ils étaient dérivés de
+  la liste affichée, donc à 0 sur tout onglet non actif ; ils viennent
+  maintenant d'un agrégat serveur.
+- **Skill** `.claude/skills/calendrier-editorial/` : protocole de lecture de la
+  veille, de proposition d'angles, de planification et de correction.
+
+### Fichiers principaux touchés
+
+`supabase/migrations/052_content_calendar.sql`, `src/types/supabase.ts`,
+`src/lib/content-types.ts`, `src/lib/content-api.ts`,
+`src/lib/api-machine-auth.ts`, `src/middleware.ts`,
+`src/app/api/market/news/`, `src/app/api/market/content/`,
+`src/app/admin/market/editorial/`, `src/app/admin/market/news/`,
+`src/components/pro/content-calendar.tsx`,
+`src/components/pro/calendar-utils.ts`, `src/components/app-sidebar.tsx`,
+`.claude/skills/calendrier-editorial/SKILL.md`, `docs/ROUTES.md`, `.env.example`.
+
+### Vérification réalisée
+
+- `npm run lint` (tsc) OK ; `npm run test` : **305 tests, 37 fichiers, tous
+  verts** (30 nouveaux sur les routes veille et calendrier).
+- `npm run lint:design:changed` : **0 violation** sur les fichiers du chantier.
+- Bout en bout sur serveur de dev : ingestion (2 insérés, puis 1 ignoré en
+  rejouant la même URL), rejet d'une catégorie hors liste, création d'un angle
+  avec trois déclinaisons, affichage aux bonnes dates dans le calendrier,
+  panneau de détail, « Marquer comme publié » → `published_at` horodaté côté
+  serveur, compteurs de la veille justes hors onglet courant.
+- **Bug trouvé et corrigé en vérification** : dans une insertion groupée,
+  PostgREST unifie les colonnes du lot et écrit un `NULL` explicite là où une
+  ligne ne fournit rien — le `DEFAULT` ne s'applique pas et les contraintes
+  `not null` (`hashtags`, `status`, `created_by`) sautaient dès que les
+  déclinaisons d'un angle n'avaient pas toutes les mêmes champs. Valeurs par
+  défaut posées explicitement sur chaque ligne + test de non-régression.
+- Données de recette supprimées de la production : 0 angle, 0 post, les 36
+  articles réels de la veille restaurés en statut `new`.
+
+### État final
+
+**Fait**, non poussé — le travail reste local sur `preview`.
+
+### Prochain point de reprise
+
+- Renseigner `EDITORIAL_API_KEY` dans les variables d'environnement Vercel
+  (présente en local dans `.env.local`, absente en production).
+- Décider du collecteur qui alimentera `POST /api/market/news` : skill Claude,
+  scénario Make, ou cron `/api/jobs/collect-news` à ajouter dans `vercel.json`.
+- Sanity : l'écriture depuis Mandat OS reste hors périmètre ; les champs
+  `external_ref` / `external_url` sont prêts si on veut la brancher plus tard.
+
+---
+Dernière mise à jour : 22/08/2026

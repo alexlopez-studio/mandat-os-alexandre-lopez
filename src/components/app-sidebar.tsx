@@ -9,6 +9,8 @@ import {
   BotIcon,
   KanbanIcon,
   LayoutDashboardIcon,
+  NewspaperIcon,
+  CalendarDaysIcon,
   SettingsIcon,
   PackageIcon,
   UserPlusIcon,
@@ -54,6 +56,8 @@ const OPPORTUNITY_ITEMS: SidebarNavItem[] = [
 const MARKET_ITEMS: SidebarNavItem[] = [
   { title: "Biens", url: "/app/properties", icon: Building2Icon },
   { title: "Data & BI", url: "/app/dvf", icon: BarChart3Icon },
+  { title: "Veille", url: "/app/news", icon: NewspaperIcon },
+  { title: "Éditorial", url: "/app/editorial", icon: CalendarDaysIcon },
 ]
 
 const CONFIG_ITEMS: SidebarNavItem[] = [

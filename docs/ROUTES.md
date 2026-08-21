@@ -37,6 +37,8 @@ Ce repo porte uniquement Mandat OS et les APIs metier associees.
 | `/app/notifications` | Notifications |
 | `/app/settings` | Parametres, sync, IA et integrations |
 | `/app/utilisateurs` | Gestion utilisateurs admin |
+| `/app/news` | Veille immobiliere : articles collectes, tries, transformes en angles |
+| `/app/editorial` | Calendrier editorial : angles issus de la veille et declinaisons par canal |
 
 ## Routes historiques
 
@@ -64,3 +66,25 @@ Ces routes restent conservees en redirection/rewrite pour compatibilite :
 | `/api/ai/*` | Assistant IA et credentials |
 | `/api/jobs/*` | Jobs et crons |
 | `/api/leads/*` | Gestion des leads relies aux opportunites |
+
+### Veille et calendrier editorial
+
+Ces routes acceptent **deux modes d'acces** : une session admin (l'app) ou le
+secret partage `EDITORIAL_API_KEY` en `Bearer` (la skill `calendrier-editorial`).
+Elles sont pour cela sorties de la protection globale du middleware
+(`PUBLIC_API_PATHS`), et portent elles-memes leur garde via
+`src/lib/api-machine-auth.ts`.
+
+| Route | Methodes | Usage |
+|-------|----------|-------|
+| `/api/market/news` | `GET` | Liste de la veille + compteurs par statut |
+| `/api/market/news` | `POST` | Ingestion machine-a-machine, dedup par `url`, 50 articles max |
+| `/api/market/news/[id]` | `PATCH`, `DELETE` | Statut de tri d'un article |
+| `/api/market/content/angles` | `GET`, `POST` | Angles editoriaux ; le `POST` cree l'angle et ses declinaisons en un appel |
+| `/api/market/content/angles/[id]` | `PATCH`, `DELETE` | Mise a jour d'un angle (suppression en cascade des posts) |
+| `/api/market/content/posts` | `GET`, `POST` | Calendrier (`from` / `to` / `unscheduled`) et ajout d'une declinaison |
+| `/api/market/content/posts/[id]` | `PATCH`, `DELETE` | Replanifier, reecrire, marquer publie |
+
+Le canal `blog` produit un brouillon markdown destine a **Sanity** (repo
+`site-alex-lopez-provence`) : Mandat OS n'ecrit pas dans Sanity, il conserve
+`external_ref` / `external_url` une fois l'article publie.

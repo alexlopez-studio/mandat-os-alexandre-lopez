@@ -81,6 +81,28 @@ export type WarmEventType =
   | 'call' | 'email' | 'message' | 'meeting'
   | 'note' | 'status_change' | 'referral' | 'import'
 
+// ── Veille & calendrier editorial (migrations 051 / 052) ───
+
+export type NewsCategory =
+  | 'taux' | 'reglementation' | 'marche_national'
+  | 'marche_local' | 'premium' | 'conseils'
+
+export type NewsStatus =
+  | 'new' | 'reviewed' | 'newsletter' | 'published' | 'archived'
+
+export type NewsConfidence = 'verified' | 'external' | 'hypothesis'
+
+export type ContentAngleStatus = 'idea' | 'planned' | 'done' | 'dropped'
+
+export type ContentChannel =
+  | 'blog' | 'linkedin' | 'instagram' | 'facebook' | 'newsletter'
+
+export type ContentPostStatus =
+  | 'draft' | 'ready' | 'scheduled' | 'published' | 'cancelled'
+
+/** Qui a cree la ligne : la skill Claude, ou une action dans l'app. */
+export type ContentAuthor = 'claude' | 'admin'
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: '12'
@@ -2220,6 +2242,201 @@ export type Database = {
           finished_at?: string | null
         }
         Relationships: []
+      }
+
+      // ── Veille & calendrier editorial (migrations 051 / 052) ───────────────
+      news_items: {
+        Row: {
+          id: string
+          source: string
+          url: string
+          title: string
+          summary: string | null
+          key_figure: string | null
+          category: NewsCategory
+          insee_code: string | null
+          city: string | null
+          zipcode: string | null
+          published_at: string | null
+          collected_at: string
+          relevance: number
+          status: NewsStatus
+          confidence: NewsConfidence
+          raw_json: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          source: string
+          url: string
+          title: string
+          summary?: string | null
+          key_figure?: string | null
+          category: NewsCategory
+          insee_code?: string | null
+          city?: string | null
+          zipcode?: string | null
+          published_at?: string | null
+          collected_at?: string
+          relevance?: number
+          status?: NewsStatus
+          confidence?: NewsConfidence
+          raw_json?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          source?: string
+          url?: string
+          title?: string
+          summary?: string | null
+          key_figure?: string | null
+          category?: NewsCategory
+          insee_code?: string | null
+          city?: string | null
+          zipcode?: string | null
+          published_at?: string | null
+          collected_at?: string
+          relevance?: number
+          status?: NewsStatus
+          confidence?: NewsConfidence
+          raw_json?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      content_angles: {
+        Row: {
+          id: string
+          news_item_id: string | null
+          title: string
+          angle: string | null
+          pillar: NewsCategory | null
+          insee_code: string | null
+          city: string | null
+          status: ContentAngleStatus
+          notes: string | null
+          created_by: ContentAuthor
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          news_item_id?: string | null
+          title: string
+          angle?: string | null
+          pillar?: NewsCategory | null
+          insee_code?: string | null
+          city?: string | null
+          status?: ContentAngleStatus
+          notes?: string | null
+          created_by?: ContentAuthor
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          news_item_id?: string | null
+          title?: string
+          angle?: string | null
+          pillar?: NewsCategory | null
+          insee_code?: string | null
+          city?: string | null
+          status?: ContentAngleStatus
+          notes?: string | null
+          created_by?: ContentAuthor
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'content_angles_news_item_id_fkey'
+            columns: ['news_item_id']
+            isOneToOne: false
+            referencedRelation: 'news_items'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      content_posts: {
+        Row: {
+          id: string
+          angle_id: string
+          channel: ContentChannel
+          scheduled_for: string | null
+          status: ContentPostStatus
+          title: string | null
+          body: string | null
+          hook: string | null
+          cta: string | null
+          visual_brief: string | null
+          hashtags: string[]
+          seo_slug: string | null
+          seo_keyword: string | null
+          seo_description: string | null
+          external_ref: string | null
+          external_url: string | null
+          published_at: string | null
+          created_by: ContentAuthor
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          angle_id: string
+          channel: ContentChannel
+          scheduled_for?: string | null
+          status?: ContentPostStatus
+          title?: string | null
+          body?: string | null
+          hook?: string | null
+          cta?: string | null
+          visual_brief?: string | null
+          hashtags?: string[]
+          seo_slug?: string | null
+          seo_keyword?: string | null
+          seo_description?: string | null
+          external_ref?: string | null
+          external_url?: string | null
+          published_at?: string | null
+          created_by?: ContentAuthor
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          angle_id?: string
+          channel?: ContentChannel
+          scheduled_for?: string | null
+          status?: ContentPostStatus
+          title?: string | null
+          body?: string | null
+          hook?: string | null
+          cta?: string | null
+          visual_brief?: string | null
+          hashtags?: string[]
+          seo_slug?: string | null
+          seo_keyword?: string | null
+          seo_description?: string | null
+          external_ref?: string | null
+          external_url?: string | null
+          published_at?: string | null
+          created_by?: ContentAuthor
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'content_posts_angle_id_fkey'
+            columns: ['angle_id']
+            isOneToOne: false
+            referencedRelation: 'content_angles'
+            referencedColumns: ['id']
+          },
+        ]
       }
     }
     Views: {
