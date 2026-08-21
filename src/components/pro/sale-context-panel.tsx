@@ -41,6 +41,13 @@ import {
 /**
  * Saisie du contexte de vente, sur la fiche projet.
  *
+ * Quatre questions visibles, le reste replie. Ce decoupage n'est pas
+ * esthetique, il est mesure : type de bien et regime posent le socle (22
+ * pieces), « travaux recents » en ajoute 5 a lui seul, et un cas particulier
+ * jusqu'a 6. Tout le reste — gaz, assainissement, equipements, zones — ne
+ * deplace la liste que d'une ligne chacun, et n'a donc rien a faire au premier
+ * plan.
+ *
  * Le contexte appartient au PROJET et non au dossier client : il se renseigne
  * des la visite d'estimation, avant meme qu'un suivi client existe, pour
  * arriver au rendez-vous mandat avec la liste des pieces deja etablie.
@@ -244,8 +251,8 @@ export function SaleContextPanel({ projectId, propertyType, onSaved }: SaleConte
       </ChipGroup>
 
       <ChipGroup
-        label="Régime"
-        hint="La copropriété appelle le mesurage Carrez, les PV d'AG et le pré-état daté."
+        label="Le bien est-il en copropriété ?"
+        hint="Si oui : mesurage Carrez, règlement, PV d'AG, appels de fonds et pré-état daté."
       >
         {REGIMES.map((key) => (
           <ToggleChip key={key} selected={draft.regime === key} onClick={() => patch({ regime: key })}>
@@ -254,7 +261,25 @@ export function SaleContextPanel({ projectId, propertyType, onSaved }: SaleConte
         ))}
       </ChipGroup>
 
-      <ChipGroup label="Situation de vente" hint="Cumulables.">
+      <ChipGroup
+        label="Des travaux de moins de 10 ans ?"
+        hint="Si oui : autorisation d'urbanisme, DAACT, assurance dommages-ouvrage et décennales."
+      >
+        <ToggleChip
+          selected={draft.travaux_recents}
+          onClick={() => patch({ travaux_recents: true })}
+        >
+          Oui
+        </ToggleChip>
+        <ToggleChip
+          selected={!draft.travaux_recents}
+          onClick={() => patch({ travaux_recents: false })}
+        >
+          Non
+        </ToggleChip>
+      </ChipGroup>
+
+      <ChipGroup label="Un cas particulier ?" hint="Rien à cocher dans la plupart des ventes.">
         {SALE_SITUATIONS.map((key) => (
           <ToggleChip
             key={key}
@@ -266,94 +291,102 @@ export function SaleContextPanel({ projectId, propertyType, onSaved }: SaleConte
         ))}
       </ChipGroup>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Field
-          label="Période du permis de construire"
-          hint="Elle commande le plomb (avant 1949) et l'amiante (avant 1997)."
-          value={draft.permis_periode}
-          options={PERMIS_PERIODES}
-          labels={PERMIS_LABEL}
-          onChange={(value) => patch({ permis_periode: value })}
-        />
-        <Field
-          label="Classe DPE"
-          hint="E, F ou G déclenchent l'audit énergétique hors copropriété."
-          value={draft.dpe_classe}
-          options={DPE_CLASSES}
-          labels={DPE_LABEL}
-          onChange={(value) => patch({ dpe_classe: value })}
-        />
-        <Field
-          label="Installation électrique"
-          value={draft.electricite}
-          options={ETATS_ELECTRICITE}
-          labels={ELECTRICITE_LABEL}
-          onChange={(value) => patch({ electricite: value })}
-        />
-        <Field
-          label="Installation gaz"
-          value={draft.gaz}
-          options={ETATS_GAZ}
-          labels={GAZ_LABEL}
-          onChange={(value) => patch({ gaz: value })}
-        />
-        <Field
-          label="Assainissement"
-          value={draft.assainissement}
-          options={ASSAINISSEMENTS}
-          labels={ASSAINISSEMENT_LABEL}
-          onChange={(value) => patch({ assainissement: value })}
-        />
-      </div>
+      {/* Replie : chacun de ces champs ne deplace la liste que d'une ligne.
+          Les valeurs par defaut sont prudentes sur le permis et l'electricite
+          (un « inconnu » declenche le diagnostic), il n'y a donc rien a perdre
+          a ne pas l'ouvrir. */}
+      <details className="rounded-lg border bg-muted/35 p-4">
+        <summary className="cursor-pointer text-sm font-bold text-foreground">
+          Affiner — diagnostics, équipements, zones
+        </summary>
 
-      <ChipGroup
-        label="Travaux et équipements"
-        hint="Des travaux de moins de dix ans appellent la DAACT et l'assurance dommages-ouvrage."
-      >
-        <ToggleChip
-          selected={draft.travaux_recents}
-          onClick={() => patch({ travaux_recents: !draft.travaux_recents })}
-        >
-          Travaux de moins de 10 ans
-        </ToggleChip>
-        {EQUIPEMENTS.map((key) => (
-          <ToggleChip
-            key={key}
-            selected={draft.equipements.includes(key)}
-            onClick={() => patch({ equipements: toggle(draft.equipements, key) })}
+        <div className="mt-4 flex flex-col gap-4">
+          <p className="text-xs leading-5 text-muted-foreground">
+            Facultatif. Sans réponse, le permis et l'électricité sont traités comme inconnus,
+            donc leurs diagnostics restent proposés par précaution.
+          </p>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field
+              label="Période du permis de construire"
+              hint="Commande le plomb (avant 1949) et l'amiante (avant 1997)."
+              value={draft.permis_periode}
+              options={PERMIS_PERIODES}
+              labels={PERMIS_LABEL}
+              onChange={(value) => patch({ permis_periode: value })}
+            />
+            <Field
+              label="Classe DPE"
+              hint="E, F ou G déclenchent l'audit énergétique hors copropriété."
+              value={draft.dpe_classe}
+              options={DPE_CLASSES}
+              labels={DPE_LABEL}
+              onChange={(value) => patch({ dpe_classe: value })}
+            />
+            <Field
+              label="Installation électrique"
+              value={draft.electricite}
+              options={ETATS_ELECTRICITE}
+              labels={ELECTRICITE_LABEL}
+              onChange={(value) => patch({ electricite: value })}
+            />
+            <Field
+              label="Installation gaz"
+              value={draft.gaz}
+              options={ETATS_GAZ}
+              labels={GAZ_LABEL}
+              onChange={(value) => patch({ gaz: value })}
+            />
+            <Field
+              label="Assainissement"
+              value={draft.assainissement}
+              options={ASSAINISSEMENTS}
+              labels={ASSAINISSEMENT_LABEL}
+              onChange={(value) => patch({ assainissement: value })}
+            />
+          </div>
+
+          <ChipGroup label="Équipements">
+            {EQUIPEMENTS.map((key) => (
+              <ToggleChip
+                key={key}
+                selected={draft.equipements.includes(key)}
+                onClick={() => patch({ equipements: toggle(draft.equipements, key) })}
+              >
+                {EQUIPEMENT_LABEL[key]}
+              </ToggleChip>
+            ))}
+          </ChipGroup>
+
+          <ChipGroup
+            label="Zones et servitudes"
+            hint="Termites, mérule et bruit aérien dépendent de l'arrêté préfectoral de la commune."
           >
-            {EQUIPEMENT_LABEL[key]}
-          </ToggleChip>
-        ))}
-      </ChipGroup>
+            {ZONES_RISQUE.map((key) => (
+              <ToggleChip
+                key={key}
+                selected={draft.zones.includes(key)}
+                onClick={() => patch({ zones: toggle(draft.zones, key) })}
+              >
+                {ZONE_LABEL[key]}
+              </ToggleChip>
+            ))}
+          </ChipGroup>
 
-      <ChipGroup
-        label="Zones et servitudes"
-        hint="Termites, mérule et bruit aérien dépendent de l'arrêté préfectoral applicable à la commune : à vérifier au cas par cas."
-      >
-        {ZONES_RISQUE.map((key) => (
-          <ToggleChip
-            key={key}
-            selected={draft.zones.includes(key)}
-            onClick={() => patch({ zones: toggle(draft.zones, key) })}
-          >
-            {ZONE_LABEL[key]}
-          </ToggleChip>
-        ))}
-      </ChipGroup>
-
-      <div className="flex flex-col gap-2">
-        <label className="text-sm font-bold text-foreground" htmlFor="sale-context-note">
-          Note
-        </label>
-        <Textarea
-          id="sale-context-note"
-          value={draft.note ?? ''}
-          onChange={(event) => patch({ note: event.target.value || null })}
-          placeholder="À confirmer avec le notaire, syndic injoignable…"
-          className="min-h-20 text-sm"
-        />
-      </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-bold text-foreground" htmlFor="sale-context-note">
+              Note
+            </label>
+            <Textarea
+              id="sale-context-note"
+              value={draft.note ?? ''}
+              onChange={(event) => patch({ note: event.target.value || null })}
+              placeholder="À confirmer avec le notaire, syndic injoignable…"
+              className="min-h-20 text-sm"
+            />
+          </div>
+        </div>
+      </details>
 
       {saved.updated_at ? (
         <p className="text-xs text-muted-foreground">

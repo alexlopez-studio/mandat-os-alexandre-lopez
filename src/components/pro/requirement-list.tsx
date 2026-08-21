@@ -88,6 +88,17 @@ export function RequirementList({ rows, onAdd, busyKey }: RequirementListProps) 
                 .map((flag) => REASON_LABEL[flag] ?? flag)
                 .filter(Boolean)
 
+              // Une seule ligne secondaire, et seulement si elle apprend
+              // quelque chose : la duree de validite (qui se perime) et la
+              // raison de la proposition. L'echeance et la reference legale
+              // n'ont pas besoin d'etre lues a chaque passage.
+              const secondary = [
+                row.validity ? `Valable ${row.validity.toLowerCase()}` : null,
+                reasons.length > 0 ? `parce que ${reasons.join(', ')}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+
               return (
                 <li key={row.key} className="flex flex-wrap items-center gap-4 p-4">
                   <span
@@ -102,14 +113,15 @@ export function RequirementList({ rows, onAdd, busyKey }: RequirementListProps) 
                   </span>
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{row.label}</p>
-                    <p className="text-xs leading-5 text-muted-foreground">{row.description}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Attendue au stade « {row.dueStage} »
-                      {row.validity ? ` · validité ${row.validity}` : ''}
-                      {row.legalRef ? ` · ${row.legalRef}` : ''}
-                      {reasons.length > 0 ? ` · proposée parce que : ${reasons.join(', ')}` : ''}
+                    {/* Le libelle porte l'information ; la reference legale se
+                        consulte au survol plutot que d'alourdir chaque ligne. */}
+                    <p className="text-sm font-medium text-foreground" title={row.legalRef}>
+                      {row.label}
                     </p>
+                    <p className="text-xs leading-5 text-muted-foreground">{row.description}</p>
+                    {secondary ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{secondary}</p>
+                    ) : null}
                   </div>
 
                   <StatusPill tone={isPresent ? 'success' : severity.tone}>
