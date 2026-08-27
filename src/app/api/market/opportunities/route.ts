@@ -194,7 +194,7 @@ export async function GET(req: NextRequest) {
 
     let query = supabaseAdmin
       .from('opportunities')
-      .select('*, project_contacts(role, contacts(id, first_name, last_name, email, phone))', { count: 'exact' })
+      .select('*, project_contacts:project_contacts!project_contacts_opportunity_id_fkey(role, contacts(id, first_name, last_name, email, phone))', { count: 'exact' })
       .eq('is_test', false)
 
     // Filtres

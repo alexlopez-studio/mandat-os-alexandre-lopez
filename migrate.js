@@ -3,12 +3,9 @@ const fs = require('fs');
 require('dotenv').config({ path: '.env.local' });
 
 async function run() {
+  const connectionString = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
   const client = new Client({ 
-    host: 'aws-0-eu-west-1.pooler.supabase.com',
-    user: 'postgres.byrsmbgfkvgxdtdyhrro',
-    password: process.env.POSTGRES_PASSWORD,
-    database: process.env.POSTGRES_DATABASE,
-    port: 5432,
+    connectionString,
     ssl: { rejectUnauthorized: false }
   });
   

@@ -1,4 +1,6 @@
 import { buildMagicLinkEmail, type MagicLinkType } from './email/magic-link-template'
+import { buildBonDeVisiteEmail } from './email/bon-de-visite-template'
+import type { BonDeVisite, VisitorInfo } from './bon-de-visite/types'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM = 'Alex Lopez <estimation@alexlopez-provence.fr>'
@@ -101,6 +103,47 @@ export async function sendClientPortalInviteEmail(params: {
 	}
 }
 
+export async function sendBonDeVisiteEmail(params: {
+	bon: BonDeVisite
+	recipient: VisitorInfo
+	siteUrl: string
+}): Promise<boolean> {
+	const apiKey = process.env.RESEND_API_KEY
+	if (!apiKey) {
+		console.warn('[Resend] RESEND_API_KEY absent, envoi simulé en dev')
+		return true
+	}
+
+	const documentUrl = `${params.siteUrl}/bon-de-visite/${params.bon.token}`
+	const { subject, html, text } = buildBonDeVisiteEmail({
+		bon: params.bon,
+		recipient: params.recipient,
+		documentUrl,
+	})
+
+	try {
+		const r = await fetch(RESEND_API, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify({
+				from: FROM,
+				to: [params.recipient.email],
+				bcc: ['alexlopez.studio@gmail.com'],
+				subject,
+				html,
+				text,
+			}),
+		})
+		return r.ok
+	} catch (err) {
+		console.error('[Resend] Error sending bon de visite email:', err)
+		return false
+	}
+}
+
 function escapeHtml(value: string): string {
 	return value
 		.replace(/&/g, '&amp;')
@@ -111,3 +154,4 @@ function escapeHtml(value: string): string {
 }
 
 export type { MagicLinkType }
+

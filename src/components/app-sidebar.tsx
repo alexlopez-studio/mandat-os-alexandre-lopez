@@ -18,6 +18,7 @@ import {
   PlayCircleIcon,
   SparklesIcon,
   PaletteIcon,
+  FileSignatureIcon,
   type LucideIcon,
 } from "lucide-react"
 import type { AdminRole } from "@/types/supabase"
@@ -49,6 +50,7 @@ const PILOTAGE_ITEMS: SidebarNavItem[] = [
 const OPPORTUNITY_ITEMS: SidebarNavItem[] = [
   { title: "Contacts", url: "/app/contacts", icon: UserPlusIcon },
   { title: "Projets", url: "/app/projects", icon: KanbanIcon },
+  { title: "Bons de visite", url: "/app/bons-de-visite", icon: FileSignatureIcon },
   { title: "Imports estimation", url: "/app/estimation-imports", icon: SparklesIcon },
 ]
 

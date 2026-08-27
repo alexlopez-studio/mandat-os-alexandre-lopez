@@ -2438,6 +2438,98 @@ export type Database = {
           },
         ]
       }
+      bons_de_visite: {
+        Row: {
+          id: string
+          reference: string
+          token: string
+          project_id: string | null
+          property_address: string
+          property_city: string
+          property_zipcode: string | null
+          property_type: string | null
+          property_price: number | null
+          mandate_ref: string | null
+          visit_at: string
+          visitors_count: number
+          visitors: Json
+          legal_text: string
+          signature_data_url: string
+          signer_name: string
+          advisor_name: string
+          advisor_email: string
+          advisor_phone: string
+          advisor_rsac: string
+          email_status: string
+          email_sent_at: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          reference: string
+          token?: string
+          project_id?: string | null
+          property_address: string
+          property_city: string
+          property_zipcode?: string | null
+          property_type?: string | null
+          property_price?: number | null
+          mandate_ref?: string | null
+          visit_at?: string
+          visitors_count?: number
+          visitors?: Json
+          legal_text: string
+          signature_data_url: string
+          signer_name: string
+          advisor_name?: string
+          advisor_email?: string
+          advisor_phone?: string
+          advisor_rsac?: string
+          email_status?: string
+          email_sent_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          reference?: string
+          token?: string
+          project_id?: string | null
+          property_address?: string
+          property_city?: string
+          property_zipcode?: string | null
+          property_type?: string | null
+          property_price?: number | null
+          mandate_ref?: string | null
+          visit_at?: string
+          visitors_count?: number
+          visitors?: Json
+          legal_text?: string
+          signature_data_url?: string
+          signer_name?: string
+          advisor_name?: string
+          advisor_email?: string
+          advisor_phone?: string
+          advisor_rsac?: string
+          email_status?: string
+          email_sent_at?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'bons_de_visite_project_id_fkey'
+            columns: ['project_id']
+            isOneToOne: false
+            referencedRelation: 'projects'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
       contacts_directory: {

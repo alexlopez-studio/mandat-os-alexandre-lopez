@@ -23,6 +23,7 @@ import {
   Edit,
   ExternalLink,
   FileCheck,
+  FileSignature,
   FileText,
   FolderOpen,
   Globe,
@@ -58,6 +59,7 @@ import {
 
 import { toast } from 'sonner'
 import { DeadlineCalendar, LiquidTemplateEditor, MandateActionsPanel, MandateFilePanel, ProjectContactDialog, PropertyRisksPanel, SaleContextPanel, StatusPill, ToggleChip, type DeadlineItem } from '@/components/pro'
+import type { BonDeVisite } from '@/lib/bon-de-visite/types'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -997,6 +999,7 @@ export default function OpportunityDetailPage() {
   // Incremente a chaque enregistrement du contexte : c'est le signal qui
   // fait recalculer la liste des pieces au panneau voisin.
   const [saleContextVersion, setSaleContextVersion] = useState(0)
+  const [projectBons, setProjectBons] = useState<BonDeVisite[]>([])
 
 
   const load = useCallback(async () => {
@@ -1009,6 +1012,16 @@ export default function OpportunityDetailPage() {
       setOpportunity(loadedOpportunity)
       setPropertyDraft(propertyDraftFromOpportunity(loadedOpportunity))
       setProfessionalDraft(professionalDraftFromOpportunity(loadedOpportunity))
+
+      try {
+        const bvRes = await fetch(`/api/market/bons-de-visite?projectId=${id}`)
+        if (bvRes.ok) {
+          const bvData = await bvRes.json()
+          setProjectBons(bvData.bons || [])
+        }
+      } catch {
+        // ignore
+      }
     } catch (err) {
       console.error('[OpportunityDetailPage] load:', err)
       toast.error('Impossible de charger l’opportunité')
@@ -1748,6 +1761,18 @@ export default function OpportunityDetailPage() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="h-9 rounded-xl text-xs font-semibold border-border bg-card hover:bg-accent cursor-pointer"
+            >
+              <Link href={`/app/bons-de-visite/nouveau?projectId=${id}`}>
+                <FileSignature className="mr-1.5 size-4 text-primary" />
+                Bon de visite
+              </Link>
+            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" aria-label="Options du projet">
@@ -1958,6 +1983,7 @@ export default function OpportunityDetailPage() {
         <TabsList variant="pill" className="w-full justify-start">
           <TabsTrigger value="overview" className="flex-1"><LayoutDashboard className="mr-1.5 size-4" /> Vue d’ensemble</TabsTrigger>
           <TabsTrigger value="estimation" className="flex-1"><Building2 className="mr-1.5 size-4" /> Estimation</TabsTrigger>
+          <TabsTrigger value="visites" className="flex-1"><FileSignature className="mr-1.5 size-4" /> Visites ({projectBons.length})</TabsTrigger>
           <TabsTrigger value="dossier" className="flex-1"><FolderOpen className="mr-1.5 size-4" /> Suivi client</TabsTrigger>
           <TabsTrigger value="history" className="flex-1"><History className="mr-1.5 size-4" /> Historique</TabsTrigger>
         </TabsList>
@@ -2432,6 +2458,173 @@ export default function OpportunityDetailPage() {
 
             <ValuationReportEditor draft={professionalDraft} setDraft={setProfessionalDraft} />
           </section>
+        </TabsContent>
+
+        <TabsContent value="visites" className="space-y-6">
+          {/* Header Visites avec Stats & Bouton d'action rapide */}
+          <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
+              <div>
+                <h3 className="text-base font-extrabold text-foreground tracking-tight flex items-center gap-2">
+                  <FileSignature className="size-5 text-primary" />
+                  Visites & Bons de visite certifiés
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Consultez l'historique des acquéreurs ayant visité ce logement et générez de nouveaux bons certifiés.
+                </p>
+              </div>
+
+              <Button
+                asChild
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs rounded-xl shadow-2xs cursor-pointer"
+              >
+                <Link href={`/app/bons-de-visite/nouveau?projectId=${opportunity.id}`}>
+                  <Plus className="mr-1.5 size-4" />
+                  Nouveau bon de visite
+                </Link>
+              </Button>
+            </div>
+
+            {/* Statistiques rapides de visite */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                  Visites effectuées
+                </span>
+                <span className="text-2xl font-black text-foreground mt-1 block">
+                  {projectBons.length}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {projectBons.length > 0 ? 'Document(s) certifié(s)' : 'Aucune visite pour le moment'}
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                  Acquéreurs uniques
+                </span>
+                <span className="text-2xl font-black text-foreground mt-1 block">
+                  {projectBons.reduce((acc, b) => acc + (b.visitors_count || b.visitors?.length || 1), 0)}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Qualifiés dans votre annuaire
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+                  Espace Vendeur
+                </span>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <StatusPill tone="success">Synchronisé</StatusPill>
+                </div>
+                <span className="text-[10px] text-muted-foreground mt-1 block">
+                  Remontée automatique au propriétaire
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Liste chronologique des bons de visite */}
+          {projectBons.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border bg-card p-12 text-center space-y-3">
+              <div className="flex size-12 mx-auto items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <FileCheck className="size-6" />
+              </div>
+              <h4 className="text-sm font-bold text-foreground">
+                Aucune visite enregistrée sur ce bien
+              </h4>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                Lors de votre prochaine visite avec un acquéreur, utilisez le générateur mobile pour faire signer le bon de recherche et visite.
+              </p>
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="mt-2 text-xs font-semibold rounded-xl border-border bg-card hover:bg-accent"
+              >
+                <Link href={`/app/bons-de-visite/nouveau?projectId=${opportunity.id}`}>
+                  <Plus className="mr-1.5 size-3.5" />
+                  Créer le premier bon de visite
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {projectBons.map((bon) => (
+                <div
+                  key={bon.id}
+                  className="rounded-2xl border border-border bg-card p-5 shadow-2xs hover:border-primary/40 transition-all space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-mono text-xs font-extrabold text-primary bg-primary/10 px-2.5 py-1 rounded-lg">
+                        {bon.reference}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(bon.visit_at).toLocaleDateString('fr-FR', {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <StatusPill tone={bon.email_status === 'sent' ? 'success' : 'neutral'}>
+                        {bon.email_status === 'sent' ? 'Email envoyé' : 'En attente email'}
+                      </StatusPill>
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs font-semibold rounded-xl border-border bg-card hover:bg-accent cursor-pointer"
+                      >
+                        <Link href={`/bon-de-visite/${bon.token}`} target="_blank">
+                          <ExternalLink className="mr-1.5 size-3.5 text-primary" />
+                          Consulter le document officiel
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Détail des visiteurs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-muted-foreground font-semibold block mb-1">
+                        Visiteur(s) ({bon.visitors_count}) :
+                      </span>
+                      <div className="space-y-1">
+                        {bon.visitors.map((v, idx) => (
+                          <div key={idx} className="flex flex-col text-foreground font-medium">
+                            <span>
+                              <strong>{v.first_name} {v.last_name}</strong>
+                              {v.cni_number ? ` · CNI : ${v.cni_number}` : ''}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {v.email}{v.phone ? ` · ${v.phone}` : ''}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-muted-foreground font-semibold block mb-1">
+                        Compte-rendu & Notes de visite :
+                      </span>
+                      <p className="text-xs text-foreground italic bg-muted/30 p-2.5 rounded-xl border border-border/60">
+                        {bon.notes || 'Aucune note particulière consignée pour cette visite.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
 
