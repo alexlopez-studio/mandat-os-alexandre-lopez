@@ -20,12 +20,8 @@ async function driveReadUnavailable(): Promise<string | null> {
 }
 
 /**
- * Outils Google mis à disposition des agents (assistant web et Telegram).
- *
- * Tous en LECTURE : ils cherchent et restituent, ils n'écrivent jamais chez
- * Google. Toute action sortante (créer un événement, envoyer un mail) doit
- * passer par `ai_action_queue` et une validation d'Alexandre — c'est la règle
- * posée dans le prompt de l'assistant, on ne la contourne pas par un outil.
+ * Outils Google mis à disposition des agents (assistant web, copilote et Telegram).
+ * Permet la lecture Drive, Gmail, et la gestion complète (lecture, création, modification, suppression) de l'Agenda Google.
  */
 export const GOOGLE_TOOL_DEFINITIONS: AiToolDefinition[] = [
   {
@@ -78,7 +74,7 @@ export const GOOGLE_TOOL_DEFINITIONS: AiToolDefinition[] = [
   {
     name: 'google_agenda',
     description:
-      "Liste les événements de l'agenda principal d'Alexandre sur une période. À utiliser pour savoir ce qu'il a de prévu, vérifier une disponibilité, ou retrouver la date d'un rendez-vous passé.",
+      "Liste les événements de l'agenda principal d'Alexandre sur une période. Renvoie l'id (event_id), le titre, les dates/heures de début et fin, le lieu, et la description. À utiliser pour vérifier ce qui est prévu ou trouver l'id d'un événement à modifier ou supprimer.",
     parameters: {
       type: 'object',
       properties: {
@@ -86,6 +82,95 @@ export const GOOGLE_TOOL_DEFINITIONS: AiToolDefinition[] = [
         fin: { type: 'string', description: 'Date de fin au format AAAA-MM-JJ.' },
       },
       required: ['debut', 'fin'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'google_agenda_creer_evenement',
+    description:
+      "Crée un nouvel événement ou rendez-vous dans l'agenda Google principal d'Alexandre. À utiliser dès qu'il demande de planifier ou d'ajouter un créneau, une visite, une estimation, un rendez-vous client ou un rappel.",
+    parameters: {
+      type: 'object',
+      properties: {
+        titre: {
+          type: 'string',
+          description: "Titre ou objet du rendez-vous. Ex : 'Visite maison Tavernes avec M. Dupont'.",
+        },
+        debut: {
+          type: 'string',
+          description: "Date et heure de début au format ISO 8601 (ex : '2026-08-29T14:30:00') ou AAAA-MM-JJ pour journée entière.",
+        },
+        fin: {
+          type: 'string',
+          description: "Date et heure de fin au format ISO 8601 (ex : '2026-08-29T15:30:00') ou AAAA-MM-JJ.",
+        },
+        description: {
+          type: 'string',
+          description: 'Notes, détails ou compte-rendu associé au rendez-vous (optionnel).',
+        },
+        lieu: {
+          type: 'string',
+          description: "Adresse ou lieu du rendez-vous (optionnel). Ex : '12 rue de la Paix, 83110 Sanary'.",
+        },
+        participants: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Adresses email des participants à inviter (optionnel).',
+        },
+      },
+      required: ['titre', 'debut', 'fin'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'google_agenda_modifier_evenement',
+    description:
+      "Modifie un événement ou rendez-vous existant dans l'agenda Google d'Alexandre (changer l'heure, le jour, le titre, le lieu ou les notes). Utilise d'abord google_agenda pour retrouver l'event_id si nécessaire.",
+    parameters: {
+      type: 'object',
+      properties: {
+        event_id: {
+          type: 'string',
+          description: "Identifiant Google de l'événement à modifier (obtenu via google_agenda).",
+        },
+        titre: {
+          type: 'string',
+          description: 'Nouveau titre du rendez-vous (optionnel).',
+        },
+        debut: {
+          type: 'string',
+          description: 'Nouvelle date/heure de début (format ISO 8601 ou AAAA-MM-JJ) (optionnel).',
+        },
+        fin: {
+          type: 'string',
+          description: 'Nouvelle date/heure de fin (format ISO 8601 ou AAAA-MM-JJ) (optionnel).',
+        },
+        description: {
+          type: 'string',
+          description: 'Nouvelle description ou notes (optionnel).',
+        },
+        lieu: {
+          type: 'string',
+          description: 'Nouveau lieu ou adresse (optionnel).',
+        },
+      },
+      required: ['event_id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'google_agenda_supprimer_evenement',
+    description:
+      "Supprime ou annule un événement ou rendez-vous dans l'agenda Google d'Alexandre. Utilise d'abord google_agenda pour obtenir l'event_id si nécessaire.",
+    parameters: {
+      type: 'object',
+      properties: {
+        event_id: {
+          type: 'string',
+          description: "Identifiant Google de l'événement à supprimer (obtenu via google_agenda).",
+        },
+      },
+      required: ['event_id'],
       additionalProperties: false,
     },
   },
@@ -100,6 +185,17 @@ function clampLimit(value: unknown, fallback = 10) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback
   return Math.min(25, Math.trunc(parsed))
+}
+
+function formatGoogleDate(dateStr: string) {
+  const str = dateStr.trim()
+  if (!str.includes('T')) {
+    return { date: str }
+  }
+  // If time does not have timezone offset, add +02:00 (Paris summer time) or Z
+  const hasTz = str.includes('Z') || str.includes('+') || /-\d{2}:\d{2}$/.test(str)
+  const fullIso = hasTz ? str : `${str}+02:00`
+  return { dateTime: fullIso }
 }
 
 /**
@@ -121,7 +217,10 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
     })
   }
 
-  const auth = { Authorization: `Bearer ${token}` }
+  const auth = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  }
 
   try {
     switch (name) {
@@ -132,8 +231,6 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
         const recherche = String(args.recherche ?? '').trim()
         if (!recherche) return JSON.stringify({ erreur: 'Recherche vide' })
 
-        // `fullText contains` couvre le nom ET le contenu indexé par Drive.
-        // Les apostrophes doivent être échappées, sinon la requête est rejetée.
         const q = `fullText contains '${recherche.replace(/'/g, "\\'")}' and trashed = false`
         const url = new URL('https://www.googleapis.com/drive/v3/files')
         url.searchParams.set('q', q)
@@ -141,7 +238,7 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
         url.searchParams.set('fields', 'files(id,name,mimeType,modifiedTime,webViewLink,size)')
         url.searchParams.set('orderBy', 'modifiedTime desc')
 
-        const res = await fetch(url, { headers: auth })
+        const res = await fetch(url, { headers: { Authorization: auth.Authorization } })
         const body = await res.json()
         if (!res.ok) return JSON.stringify({ erreur: body?.error?.message ?? `HTTP ${res.status}` })
 
@@ -167,19 +264,17 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
 
         const metaRes = await fetch(
           `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,name,mimeType`,
-          { headers: auth },
+          { headers: { Authorization: auth.Authorization } },
         )
         const meta = await metaRes.json()
         if (!metaRes.ok) return JSON.stringify({ erreur: meta?.error?.message ?? `HTTP ${metaRes.status}` })
 
-        // Les formats natifs Google (Docs, Sheets) s'exportent ; les autres se
-        // téléchargent tels quels, et seuls les formats texte sont exploitables.
         const isNative = String(meta.mimeType ?? '').startsWith('application/vnd.google-apps')
         const contentUrl = isNative
           ? `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}/export?mimeType=text/plain`
           : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`
 
-        const contentRes = await fetch(contentUrl, { headers: auth })
+        const contentRes = await fetch(contentUrl, { headers: { Authorization: auth.Authorization } })
         if (!contentRes.ok) {
           const detail = await contentRes.json().catch(() => ({}))
           return JSON.stringify({
@@ -212,7 +307,7 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
         listUrl.searchParams.set('q', recherche)
         listUrl.searchParams.set('maxResults', String(clampLimit(args.limite)))
 
-        const listRes = await fetch(listUrl, { headers: auth })
+        const listRes = await fetch(listUrl, { headers: { Authorization: auth.Authorization } })
         const list = await listRes.json()
         if (!listRes.ok) return JSON.stringify({ erreur: list?.error?.message ?? `HTTP ${listRes.status}` })
 
@@ -224,7 +319,7 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
             for (const header of ['From', 'To', 'Subject', 'Date']) {
               url.searchParams.append('metadataHeaders', header)
             }
-            const res = await fetch(url, { headers: auth })
+            const res = await fetch(url, { headers: { Authorization: auth.Authorization } })
             if (!res.ok) return null
             const message = await res.json()
             const headers = new Map<string, string>(
@@ -259,7 +354,7 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
         url.searchParams.set('orderBy', 'startTime')
         url.searchParams.set('maxResults', '50')
 
-        const res = await fetch(url, { headers: auth })
+        const res = await fetch(url, { headers: { Authorization: auth.Authorization } })
         const body = await res.json()
         if (!res.ok) return JSON.stringify({ erreur: body?.error?.message ?? `HTTP ${res.status}` })
 
@@ -267,12 +362,118 @@ export async function executeGoogleTool(name: string, rawArgs: string): Promise<
         return JSON.stringify({
           nombre: items.length,
           evenements: items.map((item) => ({
+            event_id: item.id,
             titre: item.summary ?? '(sans titre)',
             debut: item.start?.dateTime ?? item.start?.date ?? null,
             fin: item.end?.dateTime ?? item.end?.date ?? null,
             lieu: item.location ?? null,
+            description: item.description ?? null,
             participants: (item.attendees ?? []).map((a: { email: string }) => a.email),
+            lien: item.htmlLink ?? null,
           })),
+        })
+      }
+
+      case 'google_agenda_creer_evenement': {
+        const titre = String(args.titre ?? '').trim()
+        const debut = String(args.debut ?? '').trim()
+        const fin = String(args.fin ?? '').trim()
+        if (!titre || !debut || !fin) {
+          return JSON.stringify({ erreur: 'Titre, date de début et date de fin requis' })
+        }
+
+        const startObj = formatGoogleDate(debut)
+        const endObj = formatGoogleDate(fin)
+
+        const payload: Record<string, any> = {
+          summary: titre,
+          start: startObj,
+          end: endObj,
+        }
+
+        if (args.description) payload.description = String(args.description)
+        if (args.lieu) payload.location = String(args.lieu)
+        if (Array.isArray(args.participants) && args.participants.length > 0) {
+          payload.attendees = args.participants.map((email) => ({ email: String(email).trim() }))
+        }
+
+        const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events'
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify(payload),
+        })
+
+        const created = await res.json()
+        if (!res.ok) {
+          return JSON.stringify({ erreur: created?.error?.message ?? `HTTP ${res.status}` })
+        }
+
+        return JSON.stringify({
+          succes: true,
+          event_id: created.id,
+          titre: created.summary,
+          debut: created.start?.dateTime ?? created.start?.date,
+          fin: created.end?.dateTime ?? created.end?.date,
+          lieu: created.location ?? null,
+          lien: created.htmlLink ?? null,
+          message: `Rendez-vous « ${created.summary} » créé avec succès dans l'agenda Google.`,
+        })
+      }
+
+      case 'google_agenda_modifier_evenement': {
+        const eventId = String(args.event_id ?? '').trim()
+        if (!eventId) return JSON.stringify({ erreur: 'event_id manquant' })
+
+        const patchPayload: Record<string, any> = {}
+        if (args.titre) patchPayload.summary = String(args.titre).trim()
+        if (args.description !== undefined) patchPayload.description = String(args.description)
+        if (args.lieu !== undefined) patchPayload.location = String(args.lieu)
+        if (args.debut) patchPayload.start = formatGoogleDate(String(args.debut))
+        if (args.fin) patchPayload.end = formatGoogleDate(String(args.fin))
+
+        const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`
+        const res = await fetch(url, {
+          method: 'PATCH',
+          headers: auth,
+          body: JSON.stringify(patchPayload),
+        })
+
+        const updated = await res.json()
+        if (!res.ok) {
+          return JSON.stringify({ erreur: updated?.error?.message ?? `HTTP ${res.status}` })
+        }
+
+        return JSON.stringify({
+          succes: true,
+          event_id: updated.id,
+          titre: updated.summary,
+          debut: updated.start?.dateTime ?? updated.start?.date,
+          fin: updated.end?.dateTime ?? updated.end?.date,
+          lieu: updated.location ?? null,
+          message: `Événement « ${updated.summary} » modifié avec succès.`,
+        })
+      }
+
+      case 'google_agenda_supprimer_evenement': {
+        const eventId = String(args.event_id ?? '').trim()
+        if (!eventId) return JSON.stringify({ erreur: 'event_id manquant' })
+
+        const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`
+        const res = await fetch(url, {
+          method: 'DELETE',
+          headers: { Authorization: auth.Authorization },
+        })
+
+        if (!res.ok && res.status !== 204 && res.status !== 404) {
+          const body = await res.json().catch(() => ({}))
+          return JSON.stringify({ erreur: body?.error?.message ?? `HTTP ${res.status}` })
+        }
+
+        return JSON.stringify({
+          succes: true,
+          event_id: eventId,
+          message: "L'événement a bien été supprimé de votre agenda Google.",
         })
       }
 

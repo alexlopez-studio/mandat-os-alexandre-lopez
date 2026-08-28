@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
 import { NotificationsSheet } from '@/components/admin/NotificationsSheet'
+import { CopiloteWidget } from '@/components/ai/CopiloteWidget'
 import type { AdminRole } from '@/types/supabase'
 
 export function MarketShell({
@@ -27,6 +28,7 @@ export function MarketShell({
         </header>
         <div className="min-w-0 overflow-x-hidden p-4 lg:p-6">{children}</div>
       </SidebarInset>
+      <CopiloteWidget />
       <Toaster richColors position="top-right" />
     </SidebarProvider>
   )

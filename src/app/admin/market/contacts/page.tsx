@@ -61,6 +61,7 @@ import {
   type ContactType,
   type ContactStatus,
 } from '@/lib/contact-types'
+import { ContactDetailDrawer } from '@/components/admin/ContactDetailDrawer'
 import { cn } from '@/lib/utils'
 
 interface Contact {
@@ -76,6 +77,8 @@ interface Contact {
   all_types: string[] | null
   projects_count: number | null
   status: string | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 const ALL_TYPES_VALUE = 'all'
@@ -106,6 +109,7 @@ export default function ContactsListPage() {
   const [typeFilter, setTypeFilter] = useState<ContactType | typeof ALL_TYPES_VALUE>(ALL_TYPES_VALUE)
   const [statusTab, setStatusTab] = useState<StatusTab>('qualified')
   const [viewMode, setViewMode] = useState<ViewMode>('table')
+  const [selectedDrawerContact, setSelectedDrawerContact] = useState<Contact | null>(null)
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -613,7 +617,7 @@ export default function ContactsListPage() {
                 return (
                   <div
                     key={contact.id}
-                    onClick={() => router.push(`/admin/market/contacts/${contact.id}`)}
+                    onClick={() => setSelectedDrawerContact(contact)}
                     className="rounded-2xl border bg-card p-5 shadow-xs hover:border-primary/40 transition-all cursor-pointer flex flex-col justify-between space-y-4"
                   >
                     <div className="space-y-3">
@@ -756,7 +760,7 @@ export default function ContactsListPage() {
                       <TableRow
                         key={contact.id}
                         data-state={selectedIds.includes(contact.id) ? 'selected' : undefined}
-                        onClick={() => router.push(`/admin/market/contacts/${contact.id}`)}
+                        onClick={() => setSelectedDrawerContact(contact)}
                         className="cursor-pointer hover:bg-muted/30 transition-colors"
                       >
                         <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
@@ -861,6 +865,18 @@ export default function ContactsListPage() {
               const ids = linkedBlockers.map((blocker) => blocker.id)
               setLinkedBlockers([])
               deleteContacts(ids, true)
+            }}
+          />
+
+          <ContactDetailDrawer
+            open={Boolean(selectedDrawerContact)}
+            onOpenChange={(open) => !open && setSelectedDrawerContact(null)}
+            contact={selectedDrawerContact}
+            onContactUpdated={(updated) => {
+              setContacts((prev) =>
+                prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c))
+              )
+              setSelectedDrawerContact(updated as any)
             }}
           />
         </Tabs>

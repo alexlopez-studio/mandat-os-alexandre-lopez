@@ -30,7 +30,7 @@ function PageLayout({ width = 'default', className, ...props }: PageLayoutProps)
       className={cn(
         'flex w-full flex-1 flex-col gap-8 px-4 py-6 md:px-8',
         widthClasses[width],
-        width !== 'wide' && 'mx-auto',
+        'mx-auto',
         className
       )}
       {...props}
