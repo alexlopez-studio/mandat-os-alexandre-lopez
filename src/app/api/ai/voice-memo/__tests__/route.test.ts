@@ -4,6 +4,21 @@ import type { NextRequest } from 'next/server'
 const mocks = vi.hoisted(() => ({
   currentAdmin: null as unknown,
   processVoiceMemo: vi.fn(),
+  rows: [] as Array<Record<string, unknown>>,
+  signed: [] as string[],
+}))
+
+vi.mock('@/lib/supabase', () => ({
+  supabaseAdmin: {
+    storage: {
+      from: () => ({
+        createSignedUrl: (path: string) => {
+          mocks.signed.push(path)
+          return Promise.resolve({ data: { signedUrl: `https://signe.test/${path}?token=abc` }, error: null })
+        },
+      }),
+    },
+  },
 }))
 
 // `/api/ai/voice-memo` est hors du middleware de session : la garde de la route
@@ -24,7 +39,7 @@ vi.mock('@/lib/ai/db', () => ({
       chain.order = () => chain
       chain.in = () => chain
       chain.eq = () => chain
-      chain.limit = () => Promise.resolve({ data: [], error: null })
+      chain.limit = () => Promise.resolve({ data: mocks.rows, error: null })
       return chain
     },
   }),
@@ -50,6 +65,8 @@ describe('garde de /api/ai/voice-memo', () => {
     vi.clearAllMocks()
     mocks.currentAdmin = null
     mocks.processVoiceMemo.mockResolvedValue({ title: 'Compte-rendu', transcript: '' })
+    mocks.rows = []
+    mocks.signed = []
     process.env.VOICE_MEMO_API_KEY = SECRET
   })
 
@@ -95,6 +112,27 @@ describe('garde de /api/ai/voice-memo', () => {
     expect(response.status).toBe(200)
     expect(mocks.processVoiceMemo).toHaveBeenCalledOnce()
     expect(mocks.processVoiceMemo.mock.calls[0][0]).toMatchObject({ source: 'ios_shortcut' })
+  })
+
+  it('signe les liens audio et photos à la lecture, sans jamais servir de lien durable', async () => {
+    mocks.rows = [
+      {
+        id: 'memo-1',
+        audio_storage_path: 'audio/memo-1.m4a',
+        // Une URL publique heritee du bucket ouvert ne doit pas ressortir telle quelle.
+        audio_url: 'https://public.supabase.co/storage/v1/object/public/voice-memos/audio/memo-1.m4a',
+        photos: [{ storage_path: 'photos/taxe.jpg', name: 'taxe.jpg' }],
+      },
+    ]
+
+    const response = await GET(makeGet({ authorization: `Bearer ${SECRET}` }))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.data[0].audio_url).toBe('https://signe.test/audio/memo-1.m4a?token=abc')
+    expect(body.data[0].photos[0].url).toBe('https://signe.test/photos/taxe.jpg?token=abc')
+    expect(mocks.signed).toEqual(['audio/memo-1.m4a', 'photos/taxe.jpg'])
+    expect(JSON.stringify(body)).not.toContain('/object/public/')
   })
 
   it('refuse tout accès machine quand VOICE_MEMO_API_KEY est absente, et le dit', async () => {

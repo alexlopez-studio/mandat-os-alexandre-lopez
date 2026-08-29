@@ -1,5 +1,6 @@
 import { adminDb } from '@/lib/ai/db'
 import { getActiveAiCredential } from '@/lib/ai/credentials'
+import { VOICE_MEMO_BUCKET, signVoiceMemoPhotos, signVoiceMemoUrl } from '@/lib/ai/voice-memo-storage'
 import { supabaseAdmin } from '@/lib/supabase'
 import type {
   GranolaProcessedResult,
@@ -11,6 +12,30 @@ import type {
   VoiceStructuredSummary,
   LeadTemperature,
 } from './voice-memo-types'
+
+/** Modeles Groq surs pour la synthese, quand aucun n'est choisi dans les Reglages. */
+const GROQ_CHAT_FALLBACKS = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']
+
+/**
+ * Modeles Groq acceptant une image, pour l'OCR des photos de documents.
+ * Le catalogue multimodal de Groq bouge vite : la liste est essayee dans
+ * l'ordre et l'echec est sans consequence, la chaine reprend au moteur suivant.
+ */
+const GROQ_VISION_MODELS = [
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
+]
+
+/**
+ * Modeles a essayer, dans l'ordre : celui choisi dans Reglages > Assistant IA
+ * d'abord, puis les valeurs sures. Un modele de transcription selectionne par
+ * erreur comme modele par defaut est ignore ici : Whisper ne fait pas de chat.
+ */
+function groqChatModels(preferred?: string | null): string[] {
+  const candidate = preferred?.trim()
+  const usable = candidate && !candidate.includes('whisper') ? [candidate] : []
+  return [...new Set([...usable, ...GROQ_CHAT_FALLBACKS])]
+}
 
 type GranolaSummary = {
   title: string
@@ -103,17 +128,19 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
   if (audioBuffer) {
     audioStoragePath = `audio/${crypto.randomUUID()}-${audioFileName.replace(/[^a-zA-Z0-9._-]+/g, '_')}`
     const audioUpload = await supabaseAdmin.storage
-      .from('voice-memos')
+      .from(VOICE_MEMO_BUCKET)
       .upload(audioStoragePath, audioBuffer, {
         contentType: audioMimeType,
         upsert: false,
       })
 
-    if (!audioUpload.error) {
-      const { data: publicUrlData } = supabaseAdmin.storage
-        .from('voice-memos')
-        .getPublicUrl(audioStoragePath)
-      audioUrl = publicUrlData.publicUrl
+    if (audioUpload.error) {
+      console.warn('[processVoiceMemo] upload audio impossible:', audioUpload.error.message)
+      audioStoragePath = null
+    } else {
+      // Lien temporaire pour la reponse immediate. Rien de durable n'est
+      // stocke : le bucket est prive, les lectures re-signent depuis le chemin.
+      audioUrl = (await signVoiceMemoUrl(audioStoragePath)) ?? undefined
     }
   }
 
@@ -122,18 +149,14 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
   for (const photo of photos) {
     const photoStoragePath = `photos/${crypto.randomUUID()}-${photo.fileName.replace(/[^a-zA-Z0-9._-]+/g, '_')}`
     const photoUpload = await supabaseAdmin.storage
-      .from('voice-memos')
+      .from(VOICE_MEMO_BUCKET)
       .upload(photoStoragePath, photo.buffer, {
         contentType: photo.mimeType,
         upsert: false,
       })
 
-    let photoUrl: string | undefined
-    if (!photoUpload.error) {
-      const { data: pUrl } = supabaseAdmin.storage
-        .from('voice-memos')
-        .getPublicUrl(photoStoragePath)
-      photoUrl = pUrl.publicUrl
+    if (photoUpload.error) {
+      console.warn('[processVoiceMemo] upload photo impossible:', photoUpload.error.message)
     }
 
     // Extraction OCR / Vision sur la photo si clé disponible
@@ -143,11 +166,13 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
       openAiKey: openAiCred?.apiKey,
       googleKey: googleCred?.apiKey,
       openRouterKey: openRouterCred?.apiKey,
+      groqKey,
     })
 
     photoAttachments.push({
-      url: photoUrl,
-      storage_path: photoStoragePath,
+      // Pas d'`url` ici : ce tableau part en base. Les liens sont signes a la
+      // lecture, depuis `storage_path`.
+      storage_path: photoUpload.error ? undefined : photoStoragePath,
       name: photo.fileName,
       mime_type: photo.mimeType,
       document_type: ocrData.documentType,
@@ -171,6 +196,7 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
     googleKey,
     openRouterKey,
     deepseekKey,
+    preferredGroqModel: groqCred?.model,
   })
 
   const matchedContactId = contactId || structuredData.matched_contact_id
@@ -196,7 +222,9 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
         project_id: matchedProjectId,
         title: structuredData.title,
         meeting_type: structuredData.meeting_type,
-        audio_url: audioUrl,
+        // `audio_url` reste vide : un lien durable en base serait exploitable
+        // par quiconque y accede. Seul le chemin est conserve.
+        audio_url: null,
         audio_storage_path: audioStoragePath,
         photos: photoAttachments as unknown as Record<string, unknown>[],
         transcript,
@@ -244,7 +272,7 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
           voice_memo_id: voiceMemoId,
           meeting_type: structuredData.meeting_type,
           lead_temperature: structuredData.lead_temperature,
-          audio_url: audioUrl,
+          audio_storage_path: audioStoragePath,
           photos: photoAttachments,
           photos_count: photoAttachments.length,
           transcript,
@@ -292,7 +320,8 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
     action_items: structuredData.action_items,
     lead_temperature: structuredData.lead_temperature,
     transcript,
-    photos: photoAttachments,
+    // Liens signes, valables le temps d'afficher la reponse.
+    photos: await signVoiceMemoPhotos(photoAttachments),
     audio_url: audioUrl,
     source,
     created_at: new Date().toISOString(),
@@ -436,12 +465,13 @@ async function analyzePhotoWithVision(input: {
   openAiKey?: string
   googleKey?: string
   openRouterKey?: string
+  groqKey?: string
 }): Promise<{
   text: string
   documentType: VoicePhotoAttachment['document_type']
   keyValues: Record<string, string | number>
 }> {
-  const { imageBuffer, mimeType, openAiKey, googleKey, openRouterKey } = input
+  const { imageBuffer, mimeType, openAiKey, googleKey, openRouterKey, groqKey } = input
   const base64Img = imageBuffer.toString('base64')
 
   const prompt = `Tu es un assistant expert en immobilier pour Alexandre Lopez (iad Provence).
@@ -458,6 +488,57 @@ Analyse cette photo prise lors d'un rendez-vous ou d'une visite de bien.
     "annee": 2021
   }
 }`
+
+  // Groq Vision en premier, comme le reste de la chaine. Sans lui, une photo
+  // n'est analysee que si une cle OpenAI ou Google existe — il n'y en a plus.
+  // Si le modele venait a disparaitre du catalogue Groq, on redescend
+  // silencieusement sur les moteurs suivants.
+  if (groqKey) {
+    for (const visionModel of GROQ_VISION_MODELS) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${groqKey}`,
+          },
+          body: JSON.stringify({
+            model: visionModel,
+            response_format: { type: 'json_object' },
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  {
+                    type: 'image_url',
+                    image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Img}` },
+                  },
+                ],
+              },
+            ],
+          }),
+        })
+        if (res.ok) {
+          const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+          const content = json.choices?.[0]?.message?.content
+          if (content) {
+            const parsed = JSON.parse(content)
+            return {
+              text: parsed.text || '',
+              documentType: parsed.documentType || 'autre',
+              keyValues: parsed.keyValues || {},
+            }
+          }
+        } else {
+          const detail = await res.text().catch(() => '')
+          console.warn(`[analyzePhotoWithVision] Groq ${visionModel} HTTP ${res.status}:`, detail.slice(0, 500))
+        }
+      } catch (e) {
+        console.warn(`[analyzePhotoWithVision] Groq ${visionModel} error:`, e)
+      }
+    }
+  }
 
   // Google Gemini Vision
   if (googleKey) {
@@ -575,6 +656,8 @@ async function generateGranolaSummary(input: {
   googleKey?: string
   openRouterKey?: string
   deepseekKey?: string
+  /** Modele Groq choisi dans Reglages > Assistant IA, prioritaire sur les valeurs sures. */
+  preferredGroqModel?: string | null
 }): Promise<{
   summary: GranolaSummary
   provider: VoiceAiProvider | 'fallback'
@@ -591,6 +674,7 @@ async function generateGranolaSummary(input: {
     googleKey,
     openRouterKey,
     deepseekKey,
+    preferredGroqModel,
   } = input
 
   const ocrSummary = photoAttachments
@@ -671,6 +755,42 @@ ${ocrSummary ? `DOCUMENTS PHOTOS JOINTS (OCR) :\n${ocrSummary}` : ''}
 ${forcedContactId ? `\nContact forcé manuellement : ${forcedContactId}` : ''}
 ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
 
+  // Groq en premier : c'est le moteur retenu pour toute la chaine note vocale.
+  // On essaie le modele choisi dans les Reglages, puis on redescend sur des
+  // modeles surs — un modele retire du catalogue Groq ne doit pas faire perdre
+  // la note.
+  if (groqKey) {
+    for (const groqModel of groqChatModels(preferredGroqModel)) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${groqKey}`,
+          },
+          body: JSON.stringify({
+            model: groqModel,
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userContent },
+            ],
+          }),
+        })
+        if (res.ok) {
+          const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+          const content = json.choices?.[0]?.message?.content
+          if (content) return { summary: JSON.parse(content), provider: 'groq', model: groqModel }
+        } else {
+          const detail = await res.text().catch(() => '')
+          console.warn(`[generateGranolaSummary] Groq ${groqModel} HTTP ${res.status}:`, detail.slice(0, 500))
+        }
+      } catch (e) {
+        console.warn(`[generateGranolaSummary] Groq ${groqModel} error:`, e)
+      }
+    }
+  }
+
   // DeepSeek (si configuré)
   if (deepseekKey) {
     try {
@@ -696,37 +816,6 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
       }
     } catch (e) {
       console.warn('[generateGranolaSummary] DeepSeek error:', e)
-    }
-  }
-
-  // Groq (Llama 3.1 8B instant)
-  if (groqKey) {
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${groqKey}`,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userContent },
-          ],
-        }),
-      })
-      if (res.ok) {
-        const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
-        const content = json.choices?.[0]?.message?.content
-        if (content) return { summary: JSON.parse(content), provider: 'groq', model: 'llama-3.1-8b-instant' }
-      } else {
-        const detail = await res.text().catch(() => '')
-        console.warn(`[generateGranolaSummary] Groq HTTP ${res.status}:`, detail.slice(0, 500))
-      }
-    } catch (e) {
-      console.warn('[generateGranolaSummary] Groq LLM error:', e)
     }
   }
 

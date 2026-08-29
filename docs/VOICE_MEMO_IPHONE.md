@@ -11,8 +11,9 @@ format Granola, et le compte rendu arrive dans le CRM (`voice_memos` +
 | --- | --- | --- |
 | Endpoint d'ingestion | `src/app/api/ai/voice-memo/route.ts` | prêt (POST audio/photos, GET historique) |
 | Transcription Groq | `src/lib/ai/voice-memo-processor.ts` → `transcribeAudio` | `whisper-large-v3` puis `whisper-large-v3-turbo`, repli OpenAI puis Gemini |
-| Structuration Granola | même fichier → `generateGranolaSummary` | DeepSeek → Groq → OpenAI → Gemini |
-| Stockage audio/photos | bucket Supabase `voice-memos` | créé par la migration `055` |
+| Structuration Granola | même fichier → `generateGranolaSummary` | Groq d'abord (modèle des Réglages, puis `llama-3.3-70b-versatile`), replis DeepSeek → OpenAI → Gemini |
+| OCR des photos | même fichier → `analyzePhotoWithVision` | Groq vision d'abord, replis Gemini → OpenAI |
+| Stockage audio/photos | bucket Supabase `voice-memos` | **privé** depuis la migration `056`, liens signés 15 min |
 | Saisie des clés IA | `/admin/market/settings` → Assistant IA | Groq présent au catalogue |
 
 Il ne reste donc que la configuration : une clé Groq, un secret pour l'iPhone,
@@ -82,7 +83,7 @@ Réponse attendue si Groq travaille :
 ```json
 {
   "transcription": { "provider": "groq", "model": "whisper-large-v3", "errors": [] },
-  "summary": { "provider": "groq", "model": "llama-3.1-8b-instant" }
+  "summary": { "provider": "groq", "model": "llama-3.3-70b-versatile" }
 }
 ```
 
@@ -161,10 +162,20 @@ curl -s -H "Authorization: Bearer $KEY" "$BASE/api/ai/voice-memo" | jq '.reason,
 | Timeout au-delà de 60 s | `maxDuration = 60` dans la route ; Whisper Groq reste très en dessous pour un mémo de quelques minutes |
 | Note créée mais rattachée au mauvais contact | le rapprochement se fait sur les 40 derniers contacts modifiés — préciser `contact_id` dans le raccourci |
 
+## Stockage : liens signés
+
+Le bucket `voice-memos` est **privé** (migration `056`). Aucune URL durable
+n'est stockée en base : `voice_memos` ne garde que `audio_storage_path` et
+`photos[].storage_path`, et chaque lecture signe un lien valable 15 minutes
+(`src/lib/ai/voice-memo-storage.ts`, même durée que les autres documents
+clients). Concrètement, un lien copié depuis l'app cesse de fonctionner après
+ce délai — c'est voulu : un enregistrement de rendez-vous ne doit pas rester
+accessible à qui retrouve l'adresse.
+
 ## Points connus
 
-- Le bucket `voice-memos` est **public** (migration `055`) : l'URL de l'audio
-  est devinable sans authentification. À restreindre avant de traiter des
-  enregistrements sensibles.
 - La clé enregistrée dans Réglages prime sur `GROQ_API_KEY` : si les deux
   existent et que la première est invalide, c'est elle qui sera utilisée.
+- Les modèles vision de Groq changent souvent de nom. La liste essayée est dans
+  `GROQ_VISION_MODELS` ; si aucun ne répond, la photo est stockée sans OCR et
+  la raison est dans les logs Vercel.

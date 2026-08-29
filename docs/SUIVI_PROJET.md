@@ -2,6 +2,17 @@
 
 ## État actuel - 29/08/2026
 
+### 29/08/2026 - Chaîne note vocale recentrée sur Groq, bucket fermé
+- Base/branche : `preview` puis `main` (livré).
+- Statut : fait. Migration `056` à appliquer sur Supabase.
+- Résumé : Groq devient le moteur de toute la chaîne note vocale, et le stockage des enregistrements passe en privé.
+- Changements :
+  - Synthèse Granola : Groq passe **avant** DeepSeek, avec le modèle choisi dans Réglages (`llama-3.3-70b-versatile` chez Alexandre) puis des replis sûrs ; DeepSeek, OpenAI et Gemini restent en secours.
+  - OCR des photos : ajout de Groq vision en tête de chaîne. Sans lui, une photo n'était analysée qu'avec une clé OpenAI ou Google — il n'y en a plus.
+  - Bucket `voice-memos` passé en **privé** (migration `056`) : les enregistrements de rendez-vous et les photos de documents étaient lisibles par quiconque devinait l'URL, sans authentification ni expiration.
+  - Plus aucune URL durable en base : seuls les chemins sont conservés, et chaque lecture signe un lien de 15 minutes (`src/lib/ai/voice-memo-storage.ts`, même durée que les autres documents clients). La migration nettoie aussi les URL publiques déjà stockées.
+- Validation : `npm run lint` OK, `npm test` OK, `npm run lint:design:changed` sans violation nouvelle.
+
 ### 29/08/2026 - Activation Groq pour la note vocale iPhone
 - Base/branche : `claude/groq-api-voice-memo-uhglkk`.
 - Statut : fait (côté code) — reste la configuration des clés par Alexandre.

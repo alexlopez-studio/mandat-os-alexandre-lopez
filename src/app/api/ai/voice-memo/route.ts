@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminDb } from '@/lib/ai/db'
 import { checkMachineOrAdmin } from '@/lib/api-machine-auth'
+import { signVoiceMemoPhotos, signVoiceMemoUrl } from '@/lib/ai/voice-memo-storage'
 import { processVoiceMemo } from '@/lib/ai/voice-memo-processor'
 
 // Augmenter la taille limite et le timeout pour les fichiers audio de réunion
@@ -112,7 +113,17 @@ export async function GET(req: NextRequest) {
       let filtered = voiceMemos as Array<Record<string, unknown>>
       if (contactId) filtered = filtered.filter((m: Record<string, unknown>) => m.contact_id === contactId)
       if (projectId) filtered = filtered.filter((m: Record<string, unknown>) => m.project_id === projectId)
-      return NextResponse.json({ success: true, data: filtered })
+
+      // Le bucket est privé : aucun lien durable n'est stocké, on signe a la volée.
+      const signed = await Promise.all(
+        filtered.map(async (memo) => ({
+          ...memo,
+          audio_url: await signVoiceMemoUrl(memo.audio_storage_path as string | null),
+          photos: await signVoiceMemoPhotos(memo.photos as Array<{ storage_path?: string | null }>),
+        }))
+      )
+
+      return NextResponse.json({ success: true, data: signed })
     }
 
     // Tentative 2 (Fallback) : Table activities
@@ -133,21 +144,23 @@ export async function GET(req: NextRequest) {
     }
 
     // Transformation en VoiceMemoRecord
-    const mapped = (activities || [])
-      .filter((a: Record<string, any>) => a.metadata && typeof a.metadata === 'object' && a.metadata.voice_memo)
-      .map((a: Record<string, any>) => {
-        const meta = (a.metadata || {}) as Record<string, unknown>
-        return {
+    const mapped = await Promise.all(
+      (activities || [])
+        .filter((a: Record<string, any>) => a.metadata && typeof a.metadata === 'object' && a.metadata.voice_memo)
+        .map(async (a: Record<string, any>) => {
+          const meta = (a.metadata || {}) as Record<string, unknown>
+          const audioStoragePath = (meta.audio_storage_path as string | null) ?? null
+          return {
           id: a.id,
           contact_id: a.contact_id,
           project_id: a.opportunity_id,
           opportunity_id: a.opportunity_id,
           title: (a.title || 'Compte-rendu').replace(/^🎙️\s*/, ''),
           meeting_type: (meta.meeting_type || 'general') as any,
-          audio_url: (meta.audio_url as string) || null,
-          audio_storage_path: null,
+          audio_url: await signVoiceMemoUrl(audioStoragePath),
+          audio_storage_path: audioStoragePath,
           audio_duration_seconds: null,
-          photos: (meta.photos || []) as any,
+          photos: (await signVoiceMemoPhotos((meta.photos || []) as Array<{ storage_path?: string | null }>)) as any,
           transcript: (meta.transcript as string) || a.content || '',
           structured_summary: (meta.structured_summary || {
             context: a.content || '',
@@ -162,8 +175,9 @@ export async function GET(req: NextRequest) {
           ai_model: null,
           created_at: a.created_at,
           updated_at: a.updated_at,
-        }
-      })
+          }
+        })
+    )
 
     return NextResponse.json({
       success: true,
