@@ -204,26 +204,24 @@ export async function testAiProvider(providerId: AiProviderId, model?: string | 
   if (apiKey) {
     const provider = getProvider(providerId)
     if (!provider) throw new Error('Fournisseur IA inconnu')
-    const finalModel = testModel || provider.defaultModel
 
     if (provider.openAiCompatible && provider.baseUrl) {
-      const res = await callOpenAiCompatible({
-        baseUrl: provider.baseUrl,
-        apiKey,
-        model: finalModel,
-        messages: [{ role: 'user', content: 'Test' }],
-        providerId,
+      const modelsRes = await fetch(`${provider.baseUrl.replace(/\/$/, '')}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
       })
-      return Boolean(res.content)
+      if (modelsRes.ok) return true
+
+      const errJson = await modelsRes.json().catch(() => ({}))
+      throw new Error(asProviderError(errJson, `Clé API ${provider.label} invalide ou refusée`))
     }
 
     if (providerId === 'anthropic') {
-      const res = await callAnthropic({ apiKey, model: finalModel, messages: [{ role: 'user', content: 'Test' }] })
+      const res = await callAnthropic({ apiKey, model: 'claude-3-5-haiku-latest', messages: [{ role: 'user', content: 'Test' }] })
       return Boolean(res.content)
     }
 
     if (providerId === 'google') {
-      const res = await callGoogle({ apiKey, model: finalModel, messages: [{ role: 'user', content: 'Test' }] })
+      const res = await callGoogle({ apiKey, model: 'gemini-2.0-flash', messages: [{ role: 'user', content: 'Test' }] })
       return Boolean(res.content)
     }
   }
