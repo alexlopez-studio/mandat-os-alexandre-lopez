@@ -126,6 +126,7 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
   // Granola State
   const [granolaKey, setGranolaKey] = useState('')
   const [syncingGranola, setSyncingGranola] = useState(false)
+  const [iosDialogOpen, setIosDialogOpen] = useState(false)
 
   // Google State
   const [google, setGoogle] = useState<GoogleState>({ configured: false, connection: null })
@@ -714,7 +715,7 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
               </div>
             </div>
 
-            {/* Granola Card */}
+            {/* Mandat OS Voice & Vision (iPhone & Dictaphone) Card */}
             <div className="rounded-2xl border bg-card p-6 shadow-xs flex flex-col justify-between space-y-6 hover:border-primary/40 hover:shadow-sm transition-all">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -723,50 +724,34 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
                   </div>
                   <Badge
                     variant="outline"
-                    className={cn(
-                      "font-bold rounded-full text-[10px] px-2.5 py-0.5",
-                      granolaKey.trim()
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-border bg-muted text-muted-foreground"
-                    )}
+                    className="border-emerald-200 bg-emerald-50 text-emerald-700 font-bold rounded-full text-[10px] px-2.5 py-0.5"
                   >
-                    {granolaKey.trim() ? "Connecté" : "Non connecté"}
+                    Actif (0 €/mois)
                   </Badge>
                 </div>
 
                 <div>
-                  <h4 className="font-bold text-base text-foreground">Granola</h4>
+                  <h4 className="font-bold text-base text-foreground">iPhone Voice & Vision</h4>
                   <p className="text-xs text-muted-foreground font-medium mt-1 leading-relaxed">
-                    Importation automatique des transcripts d'appels et résumés de réunion.
+                    Capturez vos conversations et photos de visite depuis l&apos;iPhone (Dictaphone & Raccourcis Apple). Synthèse Granola automatique dans le CRM.
                   </p>
                 </div>
 
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Clé API Granola</Label>
-                  <Input
-                    value={granolaKey}
-                    onChange={(event) => setGranolaKey(event.target.value)}
-                    type="password"
-                    placeholder="grn_..."
-                    autoComplete="off"
-                    className="h-9 rounded-xl bg-background text-xs"
-                  />
+                <div className="rounded-xl bg-muted/40 p-3 text-[11px] text-muted-foreground space-y-1">
+                  <div className="font-semibold text-foreground flex items-center gap-1.5">
+                    <Sparkles className="size-3 text-primary" /> Remplacement Granola.ai
+                  </div>
+                  <p>Transcription Whisper, OCR documents papiers et création des tâches automatiques.</p>
                 </div>
               </div>
 
               <div className="pt-3 border-t">
                 <Button
-                  onClick={() => void syncGranola()}
-                  disabled={syncingGranola || !granolaKey.trim()}
-                  className={cn(
-                    "w-full h-9 rounded-full font-bold text-xs transition-all px-3",
-                    granolaKey.trim()
-                      ? "border border-emerald-200 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50"
-                      : "bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs"
-                  )}
+                  onClick={() => setIosDialogOpen(true)}
+                  className="w-full h-9 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow-xs px-3"
                 >
-                  {syncingGranola ? <Loader2 className="animate-spin size-3.5 mr-1.5 shrink-0" /> : <RefreshCw className="size-3.5 mr-1.5 shrink-0" />}
-                  <span className="truncate">{granolaKey.trim() ? "Synchroniser" : "Connecter Granola"}</span>
+                  <Sparkles className="size-3.5 mr-1.5 shrink-0" />
+                  <span className="truncate">Configurer Raccourci iPhone</span>
                 </Button>
               </div>
             </div>
@@ -902,6 +887,103 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Modal Configuration Raccourci Apple iPhone */}
+      <Dialog open={iosDialogOpen} onOpenChange={setIosDialogOpen}>
+        <DialogContent className="sm:max-w-xl rounded-2xl p-6 border bg-card">
+          <DialogHeader className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Sparkles className="size-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl font-bold text-foreground">
+                  Configuration Raccourci iPhone & Dictaphone
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Enregistrez vos visites et rendez-vous depuis votre iPhone et déversez-les directement dans Mandat OS.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3 text-xs">
+            {/* Étape 1 : URL du Webhook */}
+            <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  1. URL Webhook de votre Mandat OS
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] font-bold text-primary hover:bg-primary/10"
+                  onClick={() => {
+                    const url = `${window.location.origin}/api/ai/voice-memo`
+                    navigator.clipboard.writeText(url)
+                    toast.success('URL copiée dans le presse-papier !')
+                  }}
+                >
+                  Copier l&apos;URL
+                </Button>
+              </div>
+              <div className="rounded-lg bg-background p-2.5 font-mono text-[11px] text-foreground border border-border">
+                {typeof window !== 'undefined' ? `${window.location.origin}/api/ai/voice-memo` : 'https://app.alexandrelopez.fr/api/ai/voice-memo'}
+              </div>
+            </div>
+
+            {/* Étape 2 : Création en 3 étapes */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <Label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                2. Structure du Raccourci Apple (sur votre iPhone)
+              </Label>
+
+              <ol className="space-y-2 text-foreground/90 pl-4 list-decimal">
+                <li>
+                  Ouvrez l&apos;application <strong>Raccourcis</strong> sur iPhone et créez un nouveau raccourci (nom : <em>« Note Vocale Mandat OS »</em>).
+                </li>
+                <li>
+                  Ajoutez l&apos;action <strong>« Enregistrer un mémo vocal »</strong> (ou cochez <em>« Afficher dans la feuille de partage »</em> pour envoyer depuis le Dictaphone Apple).
+                </li>
+                <li>
+                  (Optionnel) Ajoutez l&apos;action <strong>« Sélectionner des photos »</strong> pour joindre les photos de la taxe foncière, du DPE ou de la maison.
+                </li>
+                <li>
+                  Ajoutez l&apos;action <strong>« Obtenir le contenu de l&apos;URL »</strong> :
+                  <ul className="pl-4 mt-1 space-y-1 text-muted-foreground list-disc">
+                    <li>Méthode : <code>POST</code></li>
+                    <li>Corps de la requête : <code>Données de formulaire (multipart/form-data)</code></li>
+                    <li>Champ 1 (Fichier) : Nom = <code>audio</code>, Valeur = <em>Mémo vocal enregistré</em></li>
+                    <li>Champ 2 (Fichier, optionnel) : Nom = <code>photos</code>, Valeur = <em>Photos sélectionnées</em></li>
+                  </ul>
+                </li>
+                <li>
+                  Ajoutez l&apos;action <strong>« Afficher la notification »</strong> : <em>« ✅ Compte-rendu envoyé à Mandat OS ! »</em>
+                </li>
+              </ol>
+            </div>
+
+            {/* Astuce Bouton Action */}
+            <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-primary flex items-start gap-2">
+              <Sparkles className="size-4 shrink-0 mt-0.5" />
+              <p className="text-[11px] leading-relaxed">
+                <strong>Astuce iPhone 15 Pro / 16 :</strong> Vous pouvez assigner ce Raccourci directement à votre <strong>Bouton Action</strong> pour démarrer un enregistrement d&apos;une simple pression dès que vous sortez de visite !
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-3 border-t">
+            <Button
+              variant="default"
+              onClick={() => setIosDialogOpen(false)}
+              className="rounded-full bg-primary font-bold text-xs px-5"
+            >
+              Compris, c&apos;est clair !
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

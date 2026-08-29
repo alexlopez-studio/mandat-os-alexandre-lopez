@@ -1,6 +1,19 @@
 # Suivi Projet - Mandat OS
 
-## État actuel - 12/07/2026
+## État actuel - 29/08/2026
+
+### 29/08/2026 - Module Voice & Vision Intelligence (Clone Granola.ai Immobilier)
+- Base/branche : `preview`.
+- Statut : fait.
+- Résumé : Implémentation complète du système d'ingestion et d'analyse intelligente de mémos vocaux et photos de réunions / visites immobilières directement depuis l'iPhone (Dictaphone & Raccourcis Apple) et le web.
+- Fonctionnalités :
+  - Ingestion multimodale via `/api/ai/voice-memo` (audio `.m4a` + photos de documents papiers / taxe foncière / bien).
+  - Transcription haute précision (Groq / OpenAI Whisper / Gemini 2.0 Flash) et OCR Vision sur les photos.
+  - Synthèse structurée Granola (Contexte, Points clés, Objections, Température lead) et matching CRM automatique (Contacts et Projets).
+  - Création automatique des tâches dans `activities`.
+  - Composants `@/components/voice` (`VoiceMemoUploadDialog`, `VoiceMemoCard`) avec 0 violation `DESIGN.md`.
+  - Intégration dans le Contact Detail Drawer et la page Réglages IA avec guide de configuration du Raccourci iOS.
+- Validation : `npx tsc --noEmit` OK (0 erreur), `node scripts/check-design.mjs` OK (0 violation).
 
 Le repo `mandat-os-alexandre-lopez` est maintenant le projet autonome dédié à Mandat OS.
 

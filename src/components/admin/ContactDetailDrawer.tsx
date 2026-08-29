@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Ban,
   Check,
   Flame,
+  Mic,
   Pencil,
   Play,
   Plus,
+  Sparkles,
   User,
   UserCheck,
   X,
@@ -15,6 +17,9 @@ import {
 import { toast } from 'sonner'
 
 import { StatusPill } from '@/components/pro'
+import { VoiceMemoUploadDialog } from '@/components/voice/VoiceMemoUploadDialog'
+import { VoiceMemoCard } from '@/components/voice/VoiceMemoCard'
+import type { VoiceMemoRecord } from '@/lib/ai/voice-memo-types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -82,9 +87,7 @@ export function ContactDetailDrawer({
   contact,
   onContactUpdated,
 }: ContactDetailDrawerProps) {
-  if (!contact) return null
-
-  const meta: ContactProfileMeta = parseContactMeta(contact.relation)
+  const meta: ContactProfileMeta = parseContactMeta(contact?.relation)
 
   // Modals state
   const [coordDialogOpen, setCoordDialogOpen] = useState(false)
@@ -97,11 +100,11 @@ export function ContactDetailDrawer({
   // Coordonnées edit form
   const [coordForm, setCoordForm] = useState({
     civilite: meta.civilite || '',
-    first_name: contact.first_name || '',
-    last_name: contact.last_name || '',
-    salutation: meta.salutation || generateSalutation(contact.first_name, meta.civilite),
-    email: contact.email || '',
-    phone: contact.phone || '',
+    first_name: contact?.first_name || '',
+    last_name: contact?.last_name || '',
+    salutation: meta.salutation || generateSalutation(contact?.first_name || '', meta.civilite),
+    email: contact?.email || '',
+    phone: contact?.phone || '',
     address: meta.address || '',
   })
 
@@ -110,8 +113,38 @@ export function ContactDetailDrawer({
 
   // Types / Profil edit state
   const [selectedTypes, setSelectedTypes] = useState<ContactType[]>(
-    normalizeContactTypes(contact.types)
+    normalizeContactTypes(contact?.types)
   )
+
+  // Voice Memos (Granola) state
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false)
+  const [voiceMemos, setVoiceMemos] = useState<VoiceMemoRecord[]>([])
+  const [loadingMemos, setLoadingMemos] = useState(false)
+
+  const contactId = contact?.id
+
+  const fetchVoiceMemos = () => {
+    if (contactId) {
+      setLoadingMemos(true)
+      fetch(`/api/ai/voice-memo?contact_id=${contactId}`)
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.success && Array.isArray(json.data)) {
+            setVoiceMemos(json.data)
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoadingMemos(false))
+    }
+  }
+
+  useEffect(() => {
+    if (open && contactId) {
+      fetchVoiceMemos()
+    }
+  }, [open, contactId])
+
+  if (!contact) return null
 
   const initials = `${contact.first_name?.[0] ?? ''}${contact.last_name?.[0] ?? ''}`.toUpperCase() || '?'
   const primaryType: ContactType = (contact.types?.[0] as ContactType) || 'vendeur'
@@ -200,7 +233,7 @@ export function ContactDetailDrawer({
 
   const handleSaveAutomation = async (e: React.FormEvent) => {
     e.preventDefault()
-    let nextMeta: ContactProfileMeta = { ...meta }
+    const nextMeta: ContactProfileMeta = { ...meta }
     if (automationDialogOpen === 'birth') {
       nextMeta.birth_date = automationValue || null
     } else if (automationDialogOpen === 'transaction') {
@@ -564,7 +597,7 @@ export function ContactDetailDrawer({
           </div>
 
           {/* Section RÉSUMÉ RELATIONNEL */}
-          <div className="mt-6 space-y-4 pb-4">
+          <div className="mt-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
                 Résumé relationnel
@@ -600,8 +633,68 @@ export function ContactDetailDrawer({
               </div>
             </div>
           </div>
+
+          {/* Section MÉMOS VOCAUX & RÉUNIONS (GRANOLA CLONE) */}
+          <div className="mt-6 space-y-4 pb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-primary" />
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Comptes-rendus & Vocaux ({voiceMemos.length})
+                </h3>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVoiceDialogOpen(true)}
+                className="h-8 gap-1.5 rounded-full text-xs font-bold text-primary border-primary/30 hover:bg-primary/5 shadow-sm"
+              >
+                <Mic className="size-3.5" />
+                Nouveau vocal / RDV
+              </Button>
+            </div>
+
+            {loadingMemos ? (
+              <div className="rounded-xl border border-border bg-card p-6 text-center text-xs text-muted-foreground">
+                Chargement des comptes-rendus...
+              </div>
+            ) : voiceMemos.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-card/50 p-6 text-center">
+                <Mic className="size-8 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-xs font-medium text-foreground">Aucun enregistrement pour ce contact</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Dictez un débriefing ou déposez vos notes de visite depuis l&apos;iPhone pour générer la synthèse IA.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setVoiceDialogOpen(true)}
+                  className="mt-3 h-7 rounded-full text-xs"
+                >
+                  Ajouter une note vocale
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {voiceMemos.map((memo) => (
+                  <VoiceMemoCard key={memo.id} memo={memo} />
+                ))}
+              </div>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
+
+      {/* Modal Upload & Enregistrement Vocal Granola */}
+      <VoiceMemoUploadDialog
+        open={voiceDialogOpen}
+        onOpenChange={setVoiceDialogOpen}
+        contactId={contact.id}
+        onProcessed={() => {
+          fetchVoiceMemos()
+          toast.success('Mémo vocal ajouté au dossier')
+        }}
+      />
 
       {/* Modal Modification Coordonnées */}
       <Dialog open={coordDialogOpen} onOpenChange={setCoordDialogOpen}>
