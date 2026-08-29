@@ -105,7 +105,7 @@ export const AI_PROVIDER_CATALOG: AiProviderCatalogItem[] = [
     label: 'Groq',
     category: 'direct',
     defaultModel: 'llama-3.3-70b-versatile',
-    models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768'],
+    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'whisper-large-v3-turbo'],
     capabilities: ['chat', 'classification', 'summarization'],
     helpUrl: 'https://console.groq.com/docs',
     baseUrl: 'https://api.groq.com/openai/v1',

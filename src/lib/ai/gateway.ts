@@ -194,9 +194,13 @@ export async function aiChat(input: {
 }
 
 export async function testAiProvider(providerId: AiProviderId, model?: string | null) {
+  let testModel = model?.trim() || null
+  if (testModel?.includes('whisper')) {
+    testModel = providerId === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini'
+  }
   const result = await aiChat({
     providerId,
-    model,
+    model: testModel,
     messages: [
       { role: 'system', content: 'Réponds uniquement par OK.' },
       { role: 'user', content: 'Test de connexion.' },
