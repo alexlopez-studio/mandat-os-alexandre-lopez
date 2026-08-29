@@ -91,13 +91,13 @@ export async function upsertAiCredential(input: {
   // index partiel dont on ne repete pas le predicat, et le client Supabase ne
   // sait pas l'exprimer : l'upsert echouait avec « no unique or exclusion
   // constraint matching the ON CONFLICT specification ».
-  // On revoque donc explicitement avant d'inserer, ce qui preserve l'historique
-  // des cles precedentes.
+  // On révoque explicitement toutes les clés précédentes non révoquées (active ou error)
+  // pour éviter tout conflit sur l'index partiel unique `where status = 'active'`.
   const { error: revokeError } = await adminDb()
     .from('ai_credentials')
     .update({ status: 'revoked', updated_at: new Date().toISOString() })
     .eq('provider_id', input.providerId)
-    .eq('status', 'active')
+    .neq('status', 'revoked')
 
   if (revokeError) {
     if (isMissingAiSchemaError(revokeError)) throw new Error('Migration 026 Assistant IA non appliquée')
@@ -173,8 +173,8 @@ export async function getActiveAiCredential(providerId?: AiProviderId | null) {
   }
 }
 
-export async function markCredentialTested(providerId: AiProviderId, ok: boolean, errorMessage?: string) {
-  const { error } = await adminDb()
+export async function markCredentialTested(target: AiProviderId | { id?: string; providerId?: AiProviderId }, ok: boolean, errorMessage?: string) {
+  let query = adminDb()
     .from('ai_credentials')
     .update({
       status: ok ? 'active' : 'error',
@@ -182,8 +182,17 @@ export async function markCredentialTested(providerId: AiProviderId, ok: boolean
       last_error: ok ? null : errorMessage ?? 'Test échoué',
       updated_at: new Date().toISOString(),
     })
-    .eq('provider_id', providerId)
-    .neq('status', 'revoked')
 
-  if (error) throw new Error(error.message)
+  if (typeof target === 'string') {
+    query = query.eq('provider_id', target).neq('status', 'revoked')
+  } else if (target.id) {
+    query = query.eq('id', target.id)
+  } else if (target.providerId) {
+    query = query.eq('provider_id', target.providerId).neq('status', 'revoked')
+  }
+
+  const { error } = await query
+  if (error) {
+    console.warn('[markCredentialTested] Error updating test status:', error)
+  }
 }
