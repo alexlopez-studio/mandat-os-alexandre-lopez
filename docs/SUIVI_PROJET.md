@@ -2,6 +2,19 @@
 
 ## État actuel - 29/08/2026
 
+### 29/08/2026 - Activation Groq pour la note vocale iPhone
+- Base/branche : `claude/groq-api-voice-memo-uhglkk`.
+- Statut : fait (côté code) — reste la configuration des clés par Alexandre.
+- Résumé : mise en service de la chaîne Groq Whisper depuis l'iPhone, et fermeture de `/api/ai/voice-memo`.
+- Changements :
+  - Garde de la route (POST **et** GET) : secret partagé `VOICE_MEMO_API_KEY` (`Authorization: Bearer` ou `x-api-key`) ou session admin, fail-closed. La route était ouverte à tous : n'importe qui pouvait déposer une note et relire les transcriptions.
+  - `isMachineOrAdmin` / `hasMachineKey` acceptent désormais une variable d'environnement et un en-tête `x-api-key` (`src/lib/api-machine-auth.ts`).
+  - Diagnostics de traitement : le moteur réellement utilisé (transcription + synthèse) est renvoyé dans la réponse, enregistré dans `voice_memos.ai_provider` / `ai_model` et dans `raw_ai_response`. `ai_provider` indiquait « openai » même quand Groq faisait le travail.
+  - Erreurs Groq (HTTP 401, quota) remontées au lieu d'un repli silencieux.
+  - Modale « Raccourci iPhone » des Réglages complétée avec l'en-tête d'authentification.
+  - Guide d'activation : `docs/VOICE_MEMO_IPHONE.md` ; `.env.example` complété (`GROQ_API_KEY`, `VOICE_MEMO_API_KEY`).
+- Validation : `npm run lint` OK, `npm test` OK (315 tests, dont 7 nouveaux sur la garde de la route), `npm run lint:design:changed` sans violation nouvelle.
+
 ### 29/08/2026 - Module Voice & Vision Intelligence (Clone Granola.ai Immobilier)
 - Base/branche : `preview`.
 - Statut : fait.

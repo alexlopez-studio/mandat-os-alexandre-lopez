@@ -1,15 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminDb } from '@/lib/ai/db'
+import { hasMachineKey, isMachineOrAdmin } from '@/lib/api-machine-auth'
 import { processVoiceMemo } from '@/lib/ai/voice-memo-processor'
 
 // Augmenter la taille limite et le timeout pour les fichiers audio de réunion
 export const maxDuration = 60 // 60 secondes max pour les requêtes lourdes
 
+/**
+ * Cette route est hors de la protection de session du middleware
+ * (`PUBLIC_API_PATHS`) pour que le raccourci iOS d'Alexandre puisse déposer une
+ * note vocale sans session Supabase. La garde est donc portée ici, fail-closed :
+ * secret partagé `VOICE_MEMO_API_KEY` (`Authorization: Bearer` ou `x-api-key`)
+ * pour l'iPhone, session admin pour l'app web.
+ */
+const VOICE_MEMO_AUTH = { envVar: 'VOICE_MEMO_API_KEY', allowApiKeyHeader: true } as const
+
+function unauthorized() {
+  return NextResponse.json(
+    {
+      success: false,
+      error:
+        "Accès refusé : fournissez l'en-tête « Authorization: Bearer <VOICE_MEMO_API_KEY> » ou connectez-vous à Mandat OS.",
+    },
+    { status: 401 }
+  )
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization')
-    const apiKeyHeader = req.headers.get('x-api-key')
-    const isWebhookAuth = Boolean(authHeader?.startsWith('Bearer ') || apiKeyHeader)
+    if (!(await isMachineOrAdmin(req, VOICE_MEMO_AUTH))) return unauthorized()
+
+    const isWebhookAuth = hasMachineKey(req, VOICE_MEMO_AUTH)
 
     // Lecture du FormData
     const formData = await req.formData()
@@ -68,6 +89,9 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    // Les transcriptions contiennent des données clients : même garde qu'en écriture.
+    if (!(await isMachineOrAdmin(req, VOICE_MEMO_AUTH))) return unauthorized()
+
     const { searchParams } = new URL(req.url)
     const contactId = searchParams.get('contact_id')
     const projectId = searchParams.get('project_id')

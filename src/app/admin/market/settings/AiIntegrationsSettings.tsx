@@ -931,6 +931,11 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
               <div className="rounded-lg bg-background p-2.5 font-mono text-[11px] text-foreground border border-border">
                 {typeof window !== 'undefined' ? `${window.location.origin}/api/ai/voice-memo` : 'https://app.alexandrelopez.fr/api/ai/voice-memo'}
               </div>
+              <p className="leading-relaxed text-muted-foreground">
+                Cette URL n&apos;accepte l&apos;iPhone que si la variable <code>VOICE_MEMO_API_KEY</code> est
+                définie côté serveur : le raccourci doit envoyer ce secret, sinon la requête est
+                refusée (401). Voir <code>docs/VOICE_MEMO_IPHONE.md</code>.
+              </p>
             </div>
 
             {/* Étape 2 : Création en 3 étapes */}
@@ -953,6 +958,7 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
                   Ajoutez l&apos;action <strong>« Obtenir le contenu de l&apos;URL »</strong> :
                   <ul className="pl-4 mt-1 space-y-1 text-muted-foreground list-disc">
                     <li>Méthode : <code>POST</code></li>
+                    <li>En-tête : <code>Authorization</code> = <code>Bearer VOTRE_VOICE_MEMO_API_KEY</code></li>
                     <li>Corps de la requête : <code>Données de formulaire (multipart/form-data)</code></li>
                     <li>Champ 1 (Fichier) : Nom = <code>audio</code>, Valeur = <em>Mémo vocal enregistré</em></li>
                     <li>Champ 2 (Fichier, optionnel) : Nom = <code>photos</code>, Valeur = <em>Photos sélectionnées</em></li>

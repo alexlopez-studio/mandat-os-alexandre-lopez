@@ -60,6 +60,27 @@ export type NewContactSuggestion = {
   notes?: string
 }
 
+/** Moteur ayant réellement traité la note. `none` = aucun moteur n'a répondu. */
+export type VoiceAiProvider = 'groq' | 'openai' | 'google' | 'deepseek' | 'none'
+
+/**
+ * Qui a fait quoi sur cette note, et pourquoi un moteur a été écarté.
+ * Sert à vérifier que Groq est bien la voie active depuis l'iPhone, et à
+ * diagnostiquer une clé invalide ou un quota dépassé sans lire les logs Vercel.
+ */
+export type VoiceProcessingDiagnostics = {
+  transcription: {
+    provider: VoiceAiProvider
+    model: string | null
+    /** Moteurs écartés, avec le motif (clé absente, HTTP 401, quota…). */
+    errors: string[]
+  }
+  summary: {
+    provider: VoiceAiProvider | 'fallback'
+    model: string | null
+  }
+}
+
 export type GranolaProcessedResult = {
   id?: string
   title: string
@@ -76,6 +97,7 @@ export type GranolaProcessedResult = {
   audio_duration_seconds?: number
   source: 'ios_shortcut' | 'dictaphone' | 'telegram' | 'web'
   created_at?: string
+  diagnostics?: VoiceProcessingDiagnostics
 }
 
 export type VoiceMemoRecord = {

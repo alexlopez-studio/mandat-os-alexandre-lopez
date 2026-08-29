@@ -4,11 +4,31 @@ import { supabaseAdmin } from '@/lib/supabase'
 import type {
   GranolaProcessedResult,
   VoiceActionItem,
+  VoiceAiProvider,
   VoiceMeetingType,
   VoicePhotoAttachment,
+  VoiceProcessingDiagnostics,
   VoiceStructuredSummary,
   LeadTemperature,
 } from './voice-memo-types'
+
+type GranolaSummary = {
+  title: string
+  meeting_type: VoiceMeetingType
+  matched_contact_id: string | null
+  matched_project_id: string | null
+  new_contact_suggested: GranolaProcessedResult['new_contact_suggested']
+  structured_summary: VoiceStructuredSummary
+  action_items: VoiceActionItem[]
+  lead_temperature: LeadTemperature
+}
+
+type TranscriptionOutcome = {
+  text: string
+  provider: VoiceAiProvider
+  model: string | null
+  errors: string[]
+}
 
 interface ProcessVoiceMemoInput {
   audioBuffer?: Buffer | null
@@ -57,8 +77,15 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
 
   // 2. Transcription de l'audio si pas déjà fournie par l'iPhone
   let transcript = providedTranscript?.trim() || ''
+  let transcription: TranscriptionOutcome = {
+    text: transcript,
+    provider: 'none',
+    model: transcript ? 'transcription fournie par l’appareil' : null,
+    errors: [],
+  }
+
   if (!transcript && audioBuffer) {
-    transcript = await transcribeAudio({
+    transcription = await transcribeAudio({
       audioBuffer,
       audioFileName,
       audioMimeType,
@@ -66,6 +93,7 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
       groqKey,
       googleKey,
     })
+    transcript = transcription.text
   }
 
   // 3. Upload des médias vers Supabase Storage
@@ -132,7 +160,7 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
   const crmContext = await fetchCrmContext()
 
   // 5. Analyse Granola & Structuration par LLM
-  const structuredData = await generateGranolaSummary({
+  const { summary: structuredData, provider: summaryProvider, model: summaryModel } = await generateGranolaSummary({
     transcript,
     photoAttachments,
     crmContext,
@@ -147,6 +175,15 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
 
   const matchedContactId = contactId || structuredData.matched_contact_id
   const matchedProjectId = projectId || structuredData.matched_project_id
+
+  const diagnostics: VoiceProcessingDiagnostics = {
+    transcription: {
+      provider: transcription.provider,
+      model: transcription.model,
+      errors: transcription.errors,
+    },
+    summary: { provider: summaryProvider, model: summaryModel },
+  }
 
   // 6. Enregistrement en base de données Supabase (activities + voice_memos)
   let voiceMemoId: string | undefined
@@ -167,8 +204,11 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
         action_items: structuredData.action_items as unknown as Record<string, unknown>[],
         lead_temperature: structuredData.lead_temperature,
         source,
-        ai_provider: openAiCred ? 'openai' : googleCred ? 'google' : 'fallback',
-        ai_model: 'granola-immobilier-v1',
+        // Le moteur réellement utilisé, pas celui dont la clé existe : sans ça
+        // une note transcrite par Groq était enregistrée comme « openai ».
+        ai_provider: summaryProvider,
+        ai_model: summaryModel,
+        raw_ai_response: { diagnostics } as unknown as Record<string, unknown>,
       })
       .select('id, created_at')
       .single()
@@ -256,6 +296,7 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
     audio_url: audioUrl,
     source,
     created_at: new Date().toISOString(),
+    diagnostics,
   }
 }
 
@@ -270,8 +311,9 @@ async function transcribeAudio(input: {
   openAiKey?: string
   groqKey?: string
   googleKey?: string
-}): Promise<string> {
+}): Promise<TranscriptionOutcome> {
   const { audioBuffer, audioFileName, audioMimeType, openAiKey, groqKey, googleKey } = input
+  const errors: string[] = []
 
   // Priorité 1 : Groq Whisper (whisper-large-v3 pour précision max, puis whisper-large-v3-turbo)
   if (groqKey) {
@@ -290,12 +332,23 @@ async function transcribeAudio(input: {
         })
         if (res.ok) {
           const json = (await res.json()) as { text?: string }
-          if (json.text) return json.text.trim()
+          if (json.text) return { text: json.text.trim(), provider: 'groq', model: groqModel, errors }
+          errors.push(`groq/${groqModel}: réponse sans texte`)
+        } else {
+          // Sans ce détail, une clé invalide ou un quota dépassé passait
+          // inaperçu : la note tombait en silence sur OpenAI ou sur le message
+          // « transcription indisponible ».
+          const detail = await res.text().catch(() => '')
+          errors.push(`groq/${groqModel}: HTTP ${res.status} ${detail.slice(0, 200)}`.trim())
+          console.warn(`[transcribeAudio] Groq ${groqModel} HTTP ${res.status}:`, detail.slice(0, 500))
         }
       } catch (e) {
+        errors.push(`groq/${groqModel}: ${e instanceof Error ? e.message : 'erreur réseau'}`)
         console.warn(`[transcribeAudio] Groq ${groqModel} error:`, e)
       }
     }
+  } else {
+    errors.push('groq: aucune clé API active (Réglages > Assistant IA, ou GROQ_API_KEY)')
   }
 
   // Priorité 2 : OpenAI Whisper officiel
@@ -314,9 +367,13 @@ async function transcribeAudio(input: {
       })
       if (res.ok) {
         const json = (await res.json()) as { text?: string }
-        if (json.text) return json.text.trim()
+        if (json.text) return { text: json.text.trim(), provider: 'openai', model: 'whisper-1', errors }
+      } else {
+        const detail = await res.text().catch(() => '')
+        errors.push(`openai/whisper-1: HTTP ${res.status} ${detail.slice(0, 200)}`.trim())
       }
     } catch (e) {
+      errors.push(`openai/whisper-1: ${e instanceof Error ? e.message : 'erreur réseau'}`)
       console.warn('[transcribeAudio] OpenAI transcription fallback:', e)
     }
   }
@@ -354,14 +411,23 @@ async function transcribeAudio(input: {
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
         }
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text
-        if (text) return text.trim()
+        if (text) return { text: text.trim(), provider: 'google', model: 'gemini-2.0-flash', errors }
+      } else {
+        const detail = await res.text().catch(() => '')
+        errors.push(`google/gemini-2.0-flash: HTTP ${res.status} ${detail.slice(0, 200)}`.trim())
       }
     } catch (e) {
+      errors.push(`google/gemini-2.0-flash: ${e instanceof Error ? e.message : 'erreur réseau'}`)
       console.warn('[transcribeAudio] Google transcription fallback:', e)
     }
   }
 
-  return "Note vocale enregistrée (transcription automatique indisponible : vérifiez les clés IA dans les Réglages)."
+  return {
+    text: "Note vocale enregistrée (transcription automatique indisponible : vérifiez les clés IA dans les Réglages).",
+    provider: 'none',
+    model: null,
+    errors,
+  }
 }
 
 async function analyzePhotoWithVision(input: {
@@ -510,14 +576,9 @@ async function generateGranolaSummary(input: {
   openRouterKey?: string
   deepseekKey?: string
 }): Promise<{
-  title: string
-  meeting_type: VoiceMeetingType
-  matched_contact_id: string | null
-  matched_project_id: string | null
-  new_contact_suggested: GranolaProcessedResult['new_contact_suggested']
-  structured_summary: VoiceStructuredSummary
-  action_items: VoiceActionItem[]
-  lead_temperature: LeadTemperature
+  summary: GranolaSummary
+  provider: VoiceAiProvider | 'fallback'
+  model: string | null
 }> {
   const {
     transcript,
@@ -631,7 +692,7 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
       if (res.ok) {
         const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
         const content = json.choices?.[0]?.message?.content
-        if (content) return JSON.parse(content)
+        if (content) return { summary: JSON.parse(content), provider: 'deepseek', model: 'deepseek-chat' }
       }
     } catch (e) {
       console.warn('[generateGranolaSummary] DeepSeek error:', e)
@@ -659,7 +720,10 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
       if (res.ok) {
         const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
         const content = json.choices?.[0]?.message?.content
-        if (content) return JSON.parse(content)
+        if (content) return { summary: JSON.parse(content), provider: 'groq', model: 'llama-3.1-8b-instant' }
+      } else {
+        const detail = await res.text().catch(() => '')
+        console.warn(`[generateGranolaSummary] Groq HTTP ${res.status}:`, detail.slice(0, 500))
       }
     } catch (e) {
       console.warn('[generateGranolaSummary] Groq LLM error:', e)
@@ -687,7 +751,7 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
       if (res.ok) {
         const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
         const content = json.choices?.[0]?.message?.content
-        if (content) return JSON.parse(content)
+        if (content) return { summary: JSON.parse(content), provider: 'openai', model: 'gpt-4o-mini' }
       }
     } catch (e) {
       console.warn('[generateGranolaSummary] OpenAI error:', e)
@@ -713,7 +777,7 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
           candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
         }
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text
-        if (text) return JSON.parse(text)
+        if (text) return { summary: JSON.parse(text), provider: 'google', model: 'gemini-2.0-flash' }
       }
     } catch (e) {
       console.warn('[generateGranolaSummary] Gemini error:', e)
@@ -722,19 +786,23 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
 
   // Fallback structuré par défaut
   return {
-    title: 'Compte-rendu de réunion',
-    meeting_type: 'general',
-    matched_contact_id: forcedContactId || null,
-    matched_project_id: forcedProjectId || null,
-    new_contact_suggested: null,
-    structured_summary: {
-      context: transcript.slice(0, 200),
-      client_situation: 'Non renseigné',
-      key_points: [transcript.slice(0, 100)],
-      objections_and_vigilance: [],
+    summary: {
+      title: 'Compte-rendu de réunion',
+      meeting_type: 'general',
+      matched_contact_id: forcedContactId || null,
+      matched_project_id: forcedProjectId || null,
+      new_contact_suggested: null,
+      structured_summary: {
+        context: transcript.slice(0, 200),
+        client_situation: 'Non renseigné',
+        key_points: [transcript.slice(0, 100)],
+        objections_and_vigilance: [],
+      },
+      action_items: [],
+      lead_temperature: 'warm',
     },
-    action_items: [],
-    lead_temperature: 'warm',
+    provider: 'fallback',
+    model: null,
   }
 }
 
