@@ -40,11 +40,20 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
     source = 'web',
   } = input
 
-  // 1. Récupération des clés IA actives
-  const openAiCred = await getActiveAiCredential('openai')
-  const groqCred = await getActiveAiCredential('groq')
-  const googleCred = await getActiveAiCredential('google')
-  const openRouterCred = await getActiveAiCredential('openrouter')
+  // 1. Récupération des clés IA actives avec fallback sécurisé
+  const [openAiCred, groqCred, googleCred, openRouterCred, deepseekCred] = await Promise.all([
+    getActiveAiCredential('openai').catch(() => null),
+    getActiveAiCredential('groq').catch(() => null),
+    getActiveAiCredential('google').catch(() => null),
+    getActiveAiCredential('openrouter').catch(() => null),
+    getActiveAiCredential('deepseek').catch(() => null),
+  ])
+
+  const openAiKey = openAiCred?.apiKey || process.env.OPENAI_API_KEY
+  const groqKey = groqCred?.apiKey || process.env.GROQ_API_KEY
+  const googleKey = googleCred?.apiKey || process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
+  const openRouterKey = openRouterCred?.apiKey || process.env.OPENROUTER_API_KEY
+  const deepseekKey = deepseekCred?.apiKey || process.env.DEEPSEEK_API_KEY
 
   // 2. Transcription de l'audio si pas déjà fournie par l'iPhone
   let transcript = providedTranscript?.trim() || ''
@@ -53,9 +62,9 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
       audioBuffer,
       audioFileName,
       audioMimeType,
-      openAiKey: openAiCred?.apiKey,
-      groqKey: groqCred?.apiKey,
-      googleKey: googleCred?.apiKey,
+      openAiKey,
+      groqKey,
+      googleKey,
     })
   }
 
@@ -129,9 +138,11 @@ export async function processVoiceMemo(input: ProcessVoiceMemoInput): Promise<Gr
     crmContext,
     forcedContactId: contactId,
     forcedProjectId: projectId,
-    openAiKey: openAiCred?.apiKey,
-    googleKey: googleCred?.apiKey,
-    openRouterKey: openRouterCred?.apiKey,
+    openAiKey,
+    groqKey,
+    googleKey,
+    openRouterKey,
+    deepseekKey,
   })
 
   const matchedContactId = contactId || structuredData.matched_contact_id
@@ -492,8 +503,10 @@ async function generateGranolaSummary(input: {
   forcedContactId?: string | null
   forcedProjectId?: string | null
   openAiKey?: string
+  groqKey?: string
   googleKey?: string
   openRouterKey?: string
+  deepseekKey?: string
 }): Promise<{
   title: string
   meeting_type: VoiceMeetingType
@@ -504,7 +517,18 @@ async function generateGranolaSummary(input: {
   action_items: VoiceActionItem[]
   lead_temperature: LeadTemperature
 }> {
-  const { transcript, photoAttachments, crmContext, forcedContactId, forcedProjectId, openAiKey, googleKey, openRouterKey } = input
+  const {
+    transcript,
+    photoAttachments,
+    crmContext,
+    forcedContactId,
+    forcedProjectId,
+    openAiKey,
+    groqKey,
+    googleKey,
+    openRouterKey,
+    deepseekKey,
+  } = input
 
   const ocrSummary = photoAttachments
     .filter((p) => p.ocr_extracted_text || p.document_type)
@@ -583,6 +607,62 @@ ${transcript}
 ${ocrSummary ? `DOCUMENTS PHOTOS JOINTS (OCR) :\n${ocrSummary}` : ''}
 ${forcedContactId ? `\nContact forcé manuellement : ${forcedContactId}` : ''}
 ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
+
+  // DeepSeek (si configuré)
+  if (deepseekKey) {
+    try {
+      const res = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${deepseekKey}`,
+        },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent },
+          ],
+        }),
+      })
+      if (res.ok) {
+        const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+        const content = json.choices?.[0]?.message?.content
+        if (content) return JSON.parse(content)
+      }
+    } catch (e) {
+      console.warn('[generateGranolaSummary] DeepSeek error:', e)
+    }
+  }
+
+  // Groq (Llama 3.3 70B versatile)
+  if (groqKey) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          response_format: { type: 'json_object' },
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent },
+          ],
+        }),
+      })
+      if (res.ok) {
+        const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+        const content = json.choices?.[0]?.message?.content
+        if (content) return JSON.parse(content)
+      }
+    } catch (e) {
+      console.warn('[generateGranolaSummary] Groq LLM error:', e)
+    }
+  }
 
   // OpenAI
   if (openAiKey) {
