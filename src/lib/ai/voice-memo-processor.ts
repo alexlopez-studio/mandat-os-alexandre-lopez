@@ -636,7 +636,7 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
     }
   }
 
-  // Groq (Llama 3.3 70B versatile)
+  // Groq (Llama 3.1 8B instant)
   if (groqKey) {
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -646,7 +646,7 @@ ${forcedProjectId ? `\nProjet forcé manuellement : ${forcedProjectId}` : ''}`
           Authorization: `Bearer ${groqKey}`,
         },
         body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
+          model: 'llama-3.1-8b-instant',
           response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: systemPrompt },
