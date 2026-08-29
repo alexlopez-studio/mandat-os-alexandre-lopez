@@ -126,9 +126,24 @@ enregistrement passé à Whisper.
 
 ## Dépannage
 
+Un `401` renvoie toujours un champ `reason` qui tranche entre les deux causes
+possibles — inutile de chercher à l'aveugle :
+
+```bash
+curl -s -H "Authorization: Bearer $KEY" "$BASE/api/ai/voice-memo" | jq '.reason, .error'
+```
+
+- `"no-secret-configured"` : ce déploiement n'a pas de `VOICE_MEMO_API_KEY`.
+  Variable absente, posée sur le mauvais environnement (elle doit couvrir
+  **Production**), ou ajoutée *après* le dernier déploiement — dans ce cas il
+  faut redéployer, une variable n'est jamais rétro-injectée dans un build existant.
+- `"bad-credentials"` : le serveur a bien un secret, mais la valeur envoyée ne
+  correspond pas. Comparer caractère par caractère avec Vercel (les espaces et
+  retours à la ligne en début/fin sont ignorés des deux côtés).
+
 | Symptôme | Cause probable |
 | --- | --- |
-| `401` depuis l'iPhone | `VOICE_MEMO_API_KEY` absente sur Vercel, non redéployée, ou en-tête `Bearer` mal formé |
+| `401` depuis l'iPhone | lire `reason` ci-dessus ; sinon en-tête `Bearer` mal formé |
 | « transcription automatique indisponible » | aucune clé de transcription valide — lire `diagnostics.transcription.errors` |
 | `diagnostics.transcription.provider = "openai"` | Groq a échoué et le repli a joué : la cause exacte est dans `errors` |
 | `413` sur les longs mémos | limite Vercel d'environ 4,5 Mo par requête. Enregistrer plus court, ou envoyer `transcript` plutôt que l'audio |

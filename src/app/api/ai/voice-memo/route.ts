@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { adminDb } from '@/lib/ai/db'
-import { hasMachineKey, isMachineOrAdmin } from '@/lib/api-machine-auth'
+import { checkMachineOrAdmin } from '@/lib/api-machine-auth'
 import { processVoiceMemo } from '@/lib/ai/voice-memo-processor'
 
 // Augmenter la taille limite et le timeout pour les fichiers audio de réunion
@@ -13,24 +13,27 @@ export const maxDuration = 60 // 60 secondes max pour les requêtes lourdes
  * secret partagé `VOICE_MEMO_API_KEY` (`Authorization: Bearer` ou `x-api-key`)
  * pour l'iPhone, session admin pour l'app web.
  */
-const VOICE_MEMO_AUTH = { envVar: 'VOICE_MEMO_API_KEY', allowApiKeyHeader: true } as const
+// `process.env.VOICE_MEMO_API_KEY` doit rester une reference statique : c'est la
+// seule forme que le bundler resout de facon fiable cote serveur. Lu a chaque
+// requete et non au chargement du module, pour ne pas dependre de l'ordre
+// d'initialisation.
+const voiceMemoAuth = () => ({ secret: process.env.VOICE_MEMO_API_KEY, allowApiKeyHeader: true })
 
-function unauthorized() {
-  return NextResponse.json(
-    {
-      success: false,
-      error:
-        "Accès refusé : fournissez l'en-tête « Authorization: Bearer <VOICE_MEMO_API_KEY> » ou connectez-vous à Mandat OS.",
-    },
-    { status: 401 }
-  )
+function unauthorized(reason: 'no-secret-configured' | 'bad-credentials') {
+  const error =
+    reason === 'no-secret-configured'
+      ? "Accès refusé : aucun secret VOICE_MEMO_API_KEY n'est configuré sur ce déploiement. Ajoutez la variable dans Vercel (Production), puis redéployez — une variable ajoutée après un déploiement n'est pas visible par celui-ci."
+      : "Accès refusé : la clé fournie ne correspond pas à VOICE_MEMO_API_KEY. Vérifiez l'en-tête « Authorization: Bearer <clé> », ou connectez-vous à Mandat OS."
+
+  return NextResponse.json({ success: false, error, reason }, { status: 401 })
 }
 
 export async function POST(req: NextRequest) {
   try {
-    if (!(await isMachineOrAdmin(req, VOICE_MEMO_AUTH))) return unauthorized()
+    const auth = await checkMachineOrAdmin(req, voiceMemoAuth())
+    if (auth !== 'machine' && auth !== 'admin') return unauthorized(auth)
 
-    const isWebhookAuth = hasMachineKey(req, VOICE_MEMO_AUTH)
+    const isWebhookAuth = auth === 'machine'
 
     // Lecture du FormData
     const formData = await req.formData()
@@ -90,7 +93,8 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     // Les transcriptions contiennent des données clients : même garde qu'en écriture.
-    if (!(await isMachineOrAdmin(req, VOICE_MEMO_AUTH))) return unauthorized()
+    const auth = await checkMachineOrAdmin(req, voiceMemoAuth())
+    if (auth !== 'machine' && auth !== 'admin') return unauthorized(auth)
 
     const { searchParams } = new URL(req.url)
     const contactId = searchParams.get('contact_id')

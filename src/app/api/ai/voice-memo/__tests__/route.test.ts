@@ -60,11 +60,18 @@ describe('garde de /api/ai/voice-memo', () => {
   it('refuse une lecture sans secret ni session', async () => {
     const response = await GET(makeGet())
     expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ reason: 'bad-credentials' })
   })
 
   it('refuse une lecture avec un mauvais secret', async () => {
     const response = await GET(makeGet({ authorization: 'Bearer mauvais-secret-de-meme-taille' }))
     expect(response.status).toBe(401)
+    expect(await response.json()).toMatchObject({ reason: 'bad-credentials' })
+  })
+
+  it('accepte un secret entoure d’espaces des deux cotes', async () => {
+    process.env.VOICE_MEMO_API_KEY = `  ${SECRET}\n`
+    expect((await GET(makeGet({ authorization: `Bearer ${SECRET} ` }))).status).toBe(200)
   })
 
   it('accepte le secret du raccourci iOS en Bearer ou en x-api-key', async () => {
@@ -90,8 +97,11 @@ describe('garde de /api/ai/voice-memo', () => {
     expect(mocks.processVoiceMemo.mock.calls[0][0]).toMatchObject({ source: 'ios_shortcut' })
   })
 
-  it('refuse tout accès machine quand VOICE_MEMO_API_KEY est absente', async () => {
+  it('refuse tout accès machine quand VOICE_MEMO_API_KEY est absente, et le dit', async () => {
     delete process.env.VOICE_MEMO_API_KEY
-    expect((await GET(makeGet({ authorization: `Bearer ${SECRET}` }))).status).toBe(401)
+    const response = await GET(makeGet({ authorization: `Bearer ${SECRET}` }))
+    expect(response.status).toBe(401)
+    // Le motif distingue « variable absente du deploiement » de « cle erronee ».
+    expect(await response.json()).toMatchObject({ reason: 'no-secret-configured' })
   })
 })
