@@ -134,9 +134,20 @@ curl -s -H "Authorization: Bearer $KEY" "$BASE/api/ai/voice-memo" | jq '.reason,
 ```
 
 - `"no-secret-configured"` : ce déploiement n'a pas de `VOICE_MEMO_API_KEY`.
-  Variable absente, posée sur le mauvais environnement (elle doit couvrir
-  **Production**), ou ajoutée *après* le dernier déploiement — dans ce cas il
-  faut redéployer, une variable n'est jamais rétro-injectée dans un build existant.
+  Trois causes, par ordre de fréquence :
+  1. la variable a été posée sur **un autre projet Vercel** — il faut celui qui
+     sert `app.alexandrelopez.fr`, soit `mandat-os-alexandre-lopez` ;
+  2. elle ne couvre pas l'environnement **Production** (cas classique : seuls
+     Preview et Development sont cochés) ;
+  3. elle a été ajoutée *après* le dernier déploiement — il faut redéployer,
+     une variable n'est jamais rétro-injectée dans un build déjà construit.
+
+  Pour lever le doute sans afficher aucune valeur secrète :
+
+  ```bash
+  npx vercel link     # si le dossier n'est pas déjà relié au bon projet
+  npx vercel env ls   # noms et environnements de chaque variable
+  ```
 - `"bad-credentials"` : le serveur a bien un secret, mais la valeur envoyée ne
   correspond pas. Comparer caractère par caractère avec Vercel (les espaces et
   retours à la ligne en début/fin sont ignorés des deux côtés).
