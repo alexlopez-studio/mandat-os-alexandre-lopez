@@ -55,7 +55,7 @@ export async function middleware(req: NextRequest) {
   // Toute autre route interne exige une session.
   // Fail-closed : pas de session => redirection vers le login.
   if (!user) {
-    if (isProtectedApi) {
+    if (path.startsWith('/api')) {
       return NextResponse.json(
         { success: false, error: 'Non authentifié' },
         { status: 401 },
