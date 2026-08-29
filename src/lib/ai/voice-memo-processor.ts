@@ -273,26 +273,28 @@ async function transcribeAudio(input: {
 }): Promise<string> {
   const { audioBuffer, audioFileName, audioMimeType, openAiKey, groqKey, googleKey } = input
 
-  // Priorité 1 : Groq Whisper (ultra-rapide)
+  // Priorité 1 : Groq Whisper (whisper-large-v3 pour précision max, puis whisper-large-v3-turbo)
   if (groqKey) {
-    try {
-      const formData = new FormData()
-      const blob = new Blob([new Uint8Array(audioBuffer)], { type: audioMimeType || 'audio/m4a' })
-      formData.append('file', blob, audioFileName || 'audio.m4a')
-      formData.append('model', 'whisper-large-v3-turbo')
-      formData.append('language', 'fr')
+    for (const groqModel of ['whisper-large-v3', 'whisper-large-v3-turbo']) {
+      try {
+        const formData = new FormData()
+        const blob = new Blob([new Uint8Array(audioBuffer)], { type: audioMimeType || 'audio/m4a' })
+        formData.append('file', blob, audioFileName || 'audio.m4a')
+        formData.append('model', groqModel)
+        formData.append('language', 'fr')
 
-      const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${groqKey}` },
-        body: formData,
-      })
-      if (res.ok) {
-        const json = (await res.json()) as { text?: string }
-        if (json.text) return json.text.trim()
+        const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${groqKey}` },
+          body: formData,
+        })
+        if (res.ok) {
+          const json = (await res.json()) as { text?: string }
+          if (json.text) return json.text.trim()
+        }
+      } catch (e) {
+        console.warn(`[transcribeAudio] Groq ${groqModel} error:`, e)
       }
-    } catch (e) {
-      console.warn('[transcribeAudio] Groq transcription fallback:', e)
     }
   }
 
