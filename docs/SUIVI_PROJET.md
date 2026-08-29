@@ -4,7 +4,8 @@
 
 ### 29/08/2026 - Chaîne note vocale recentrée sur Groq, bucket fermé
 - Base/branche : `preview` puis `main` (livré).
-- Statut : fait. Migration `056` à appliquer sur Supabase.
+- Statut : fait, migrations `055` et `056` appliquées sur Supabase production **et** preview.
+- Découvert au passage : la migration `055` n'avait jamais été appliquée nulle part, et ne pouvait pas l'être — elle déclarait une clé étrangère vers `public.opportunities`, qui est une **vue** depuis `restore_views_instead_of_triggers` (Postgres refuse une FK vers une vue). Ni la table `voice_memos` ni le bucket n'existaient : une note iPhone aurait perdu son audio (pas de bucket) et n'aurait atterri que dans `activities`. La contrainte a été retirée, le rattachement se fait par `project_id`.
 - Résumé : Groq devient le moteur de toute la chaîne note vocale, et le stockage des enregistrements passe en privé.
 - Changements :
   - Synthèse Granola : Groq passe **avant** DeepSeek, avec le modèle choisi dans Réglages (`llama-3.3-70b-versatile` chez Alexandre) puis des replis sûrs ; DeepSeek, OpenAI et Gemini restent en secours.

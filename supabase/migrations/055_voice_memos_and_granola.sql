@@ -8,7 +8,12 @@ create table if not exists public.voice_memos (
   id uuid primary key default gen_random_uuid(),
   contact_id uuid references public.contacts(id) on delete set null,
   project_id uuid references public.projects(id) on delete set null,
-  opportunity_id uuid references public.opportunities(id) on delete set null,
+  -- Pas de cle etrangere ici : `opportunities` est une VUE de compatibilite
+  -- au-dessus de `projects` (migration `restore_views_instead_of_triggers`),
+  -- et Postgres refuse une FK vers une vue. En l'etat, cette migration
+  -- echouait a l'application — c'est pourquoi la table n'existait sur aucun
+  -- environnement. Le rattachement metier se fait par `project_id`.
+  opportunity_id uuid,
   
   -- Titre et type de réunion
   title text not null default 'Compte-rendu de réunion',
