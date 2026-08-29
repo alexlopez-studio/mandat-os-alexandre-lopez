@@ -29,21 +29,23 @@ const PUBLIC_API_PATHS = [
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname
 
-  // Rafraîchit la session sur toutes les routes internes.
-  const { response, user } = await updateSession(req)
+  // Endpoints API publics (Webhook Stream Estate, Voice Memo Raccourcis iOS, News, Content)
+  if (PUBLIC_API_PATHS.some((p) => path === p || path.startsWith(p + '/'))) {
+    return NextResponse.next()
+  }
 
-  const isProtectedPage = path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/app')
-  const isProtectedApi =
-    PROTECTED_API_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix + '/')) &&
-    !PUBLIC_API_PATHS.some((publicPath) => path === publicPath || path.startsWith(publicPath + '/'))
-  const isProtected = isProtectedPage || isProtectedApi
-  if (!isProtected) return response
+  // Pages publiques d'auth (login, reset password)
+  if (PUBLIC_ADMIN_PATHS.some((p) => path === p || path.startsWith(p + '/'))) {
+    return NextResponse.next()
+  }
 
   // En local uniquement, permet de travailler dans Mandat OS sans session Supabase.
-  // En production, isDevAuthBypassEnabled() est toujours false.
   if (isDevAuthBypassEnabled()) {
-    return response
+    return NextResponse.next()
   }
+
+  // Rafraîchit la session sur toutes les routes internes protégées.
+  const { response, user } = await updateSession(req)
 
   // Pages publiques d'auth : on laisse passer (mais on garde les cookies rafraîchis)
   if (PUBLIC_ADMIN_PATHS.some((p) => path === p || path.startsWith(p + '/'))) {
