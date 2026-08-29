@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     let testResult: { ok: boolean; error?: string } | null = null
     if (body.test !== false) {
       try {
-        const ok = await testAiProvider(body.provider_id, credential.default_model)
+        const ok = await testAiProvider(body.provider_id, credential.default_model, body.api_key as string)
         await markCredentialTested(body.provider_id, ok)
         testResult = { ok }
       } catch (err) {

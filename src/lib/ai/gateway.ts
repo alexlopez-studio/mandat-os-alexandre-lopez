@@ -193,11 +193,39 @@ export async function aiChat(input: {
   }
 }
 
-export async function testAiProvider(providerId: AiProviderId, model?: string | null) {
+export async function testAiProvider(providerId: AiProviderId, model?: string | null, apiKey?: string | null) {
   let testModel = model?.trim() || null
   if (testModel?.includes('whisper')) {
     testModel = providerId === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini'
   }
+
+  if (apiKey) {
+    const provider = getProvider(providerId)
+    if (!provider) throw new Error('Fournisseur IA inconnu')
+    const finalModel = testModel || provider.defaultModel
+
+    if (provider.openAiCompatible && provider.baseUrl) {
+      const res = await callOpenAiCompatible({
+        baseUrl: provider.baseUrl,
+        apiKey,
+        model: finalModel,
+        messages: [{ role: 'user', content: 'Test' }],
+        providerId,
+      })
+      return Boolean(res.content)
+    }
+
+    if (providerId === 'anthropic') {
+      const res = await callAnthropic({ apiKey, model: finalModel, messages: [{ role: 'user', content: 'Test' }] })
+      return Boolean(res.content)
+    }
+
+    if (providerId === 'google') {
+      const res = await callGoogle({ apiKey, model: finalModel, messages: [{ role: 'user', content: 'Test' }] })
+      return Boolean(res.content)
+    }
+  }
+
   const result = await aiChat({
     providerId,
     model: testModel,
