@@ -7,6 +7,7 @@ import {
   Building2Icon,
   BarChart3Icon,
   BotIcon,
+  MicIcon,
   KanbanIcon,
   LayoutDashboardIcon,
   NewspaperIcon,
@@ -45,6 +46,7 @@ type SidebarNavItem = {
 const PILOTAGE_ITEMS: SidebarNavItem[] = [
   { title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboardIcon },
   { title: "Assistant IA", url: "/app/assistant", icon: BotIcon },
+  { title: "Comptes rendus", url: "/app/granola", icon: MicIcon },
 ]
 
 const OPPORTUNITY_ITEMS: SidebarNavItem[] = [

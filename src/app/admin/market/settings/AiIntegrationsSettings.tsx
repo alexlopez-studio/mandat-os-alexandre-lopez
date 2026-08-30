@@ -123,8 +123,7 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
   const [showApiKey, setShowApiKey] = useState(false)
   const [savingCredential, setSavingCredential] = useState(false)
 
-  // Granola State
-  const [granolaKey, setGranolaKey] = useState('')
+  // Granola State — plan gratuit : OAuth via le MCP distant, aucune cle API.
   const [syncingGranola, setSyncingGranola] = useState(false)
   const [iosDialogOpen, setIosDialogOpen] = useState(false)
 
@@ -344,12 +343,18 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
       const res = await fetch('/api/integrations/granola/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: granolaKey || undefined }),
+        body: JSON.stringify({}),
       })
       const json = await res.json()
-      if (!res.ok || !json.success) throw new Error(json.error ?? 'Sync Granola impossible')
-      setGranolaKey('')
-      toast.success(`${json.data.imported} transcript(s), ${json.data.queued} action(s) à valider`)
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? json.data?.skipped_reason ?? 'Sync Granola impossible')
+      }
+      const ingest = json.data?.ingest
+      toast.success(
+        ingest
+          ? `${ingest.fetched} réunion(s) : ${ingest.created} créée(s), ${ingest.updated} mise(s) à jour, ${ingest.needs_review} à arbitrer`
+          : 'Synchronisation Granola terminée',
+      )
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Sync Granola impossible')
     } finally {
@@ -712,6 +717,64 @@ export function AiIntegrationsSettings({ mode = 'all' }: { mode?: 'ia' | 'integr
                     <span className="truncate">Connecter Google</span>
                   </Button>
                 )}
+              </div>
+            </div>
+
+            {/* Granola Card */}
+            <div className="rounded-2xl border bg-card p-6 shadow-xs flex flex-col justify-between space-y-6 hover:border-primary/40 hover:shadow-sm transition-all">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="size-11 rounded-2xl bg-accent text-primary flex items-center justify-center font-bold shadow-xs">
+                    <Mic className="size-5" />
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="border-border bg-muted text-muted-foreground font-bold rounded-full text-xs px-2 py-0.5"
+                  >
+                    Plan gratuit (0 €/mois)
+                  </Badge>
+                </div>
+
+                <div>
+                  <h4 className="font-bold text-base text-foreground">Granola</h4>
+                  <p className="text-xs text-muted-foreground font-medium mt-1 leading-relaxed">
+                    Ingestion quotidienne des comptes rendus de rendez-vous. Le plan gratuit n&apos;expose que
+                    30 jours d&apos;historique : sans synchronisation, les réunions sont définitivement perdues.
+                  </p>
+                </div>
+
+                <div className="rounded-xl bg-muted/40 p-2 text-xs text-muted-foreground space-y-1">
+                  <div className="font-semibold text-foreground flex items-center gap-2">
+                    <Sparkles className="size-3 text-primary" /> Arbitrage et actions
+                  </div>
+                  <p>Rattachement aux affaires, extraction IA et file d&apos;actions dans « Comptes rendus ».</p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t space-y-2">
+                <Button
+                  asChild
+                  className="w-full h-9 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow-xs px-4"
+                >
+                  <a href="/api/integrations/granola/oauth/start" className="inline-flex items-center justify-center min-w-0">
+                    <ShieldCheck className="size-4 mr-2 shrink-0" />
+                    <span className="truncate">Connecter Granola</span>
+                  </a>
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={syncGranola}
+                    disabled={syncingGranola}
+                    className="flex-1 h-9 rounded-full font-bold text-xs px-4"
+                  >
+                    {syncingGranola ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
+                    <span className="truncate">Synchroniser</span>
+                  </Button>
+                  <Button asChild variant="ghost" className="flex-1 h-9 rounded-full font-bold text-xs px-4">
+                    <a href="/app/granola" className="truncate">Ouvrir</a>
+                  </Button>
+                </div>
               </div>
             </div>
 
